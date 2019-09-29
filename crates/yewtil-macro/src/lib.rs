@@ -68,7 +68,7 @@ impl Parse for DeriveEmissiveInput {
             .collect::<Vec<CallbackField>>();
 
         if callback_fields.len() > 1 {
-            return Err(syn::Error::new(named_fields_span, "There can only be one emissive field. If you want to support more than one, manually implement Emissive."));
+            return Err(syn::Error::new(named_fields_span, "There can only be one `Callback<_>` field. If you want to support more than one, you must manually implement `Emissive`."));
         }
         let callback_field = callback_fields.into_iter().next();
 
