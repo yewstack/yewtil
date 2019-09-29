@@ -1,8 +1,9 @@
 use yew::{html, Component, ComponentLink, Html, Renderable, ShouldRender};
 
-use yew_pure::Pure;
+use yewtil::Pure;
 mod button;
 use crate::button::Button;
+use yewtil::transform_cb;
 
 pub struct Model { }
 
@@ -21,6 +22,7 @@ impl Component for Model {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             Msg::DoIt => {
+                log::info!("got message");
                 true
             }
         }
@@ -36,6 +38,7 @@ impl Renderable<Model> for Model {
 }
 
 fn main() {
+    web_logger::init();
     yew::start_app::<Model>();
 }
 

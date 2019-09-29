@@ -1,14 +1,14 @@
 
-use yew_pure::{PureComponent, Emissive, Pure};
-use yew::{Callback, Component, Properties, html};
+use yewtil::{PureComponent, Emissive, Pure};
+use yew::{Callback, Properties, html};
 
-use crate::{Model, Msg};
+use crate::{Msg};
 use yew::virtual_dom::VNode;
 
-#[derive(PartialEq, Properties)]
+#[derive(PartialEq, Properties, Emissive)]
 pub struct Button {
-    #[props(required)]
-    pub callback: Callback<<Model as Component>::Message>,
+    #[props(required) ]
+    pub callback: Callback<Msg>,
     pub text: String
 }
 
@@ -20,11 +20,3 @@ impl PureComponent for Button {
     }
 }
 
-// TODO, this could be easily derived by just annotating the Button to indicate which struct is the callback.
-impl Emissive for Button {
-    type Message = <Model as Component>::Message;
-
-    fn emit(&self, msg: Self::Message) {
-        self.callback.emit(msg)
-    }
-}
