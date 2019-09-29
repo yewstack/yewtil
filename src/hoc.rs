@@ -1,4 +1,4 @@
-use yew::{Component, Properties, ShouldRender, ComponentLink, Html, Renderable, html};
+use yew::{Component, Properties, ShouldRender, ComponentLink, Html, Renderable};
 use std::marker::PhantomData;
 use yew::virtual_dom::vcomp::ScopeHolder;
 use yew::virtual_dom::{VNode, VComp};
@@ -32,11 +32,7 @@ pub trait HigherOrderComponent<T>: Sized + 'static
     fn to_inner_properties(&self) -> Option<T::Properties>;
 
     fn render(&self, inner: Option<Html<Hoc<T, Self>>>) -> Html<Hoc<T, Self>> {
-        if let Some(inner) = inner {
-            inner
-        } else {
-            html!{}
-        }
+        inner.into_iter().collect::<Html<Hoc<T, Self>>>().into()
     }
 }
 
