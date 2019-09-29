@@ -3,7 +3,6 @@ use yew::{html, Component, ComponentLink, Html, Renderable, ShouldRender};
 use yewtil::Pure;
 mod button;
 use crate::button::Button;
-use yewtil::transform_cb;
 
 pub struct Model { }
 
@@ -32,7 +31,7 @@ impl Component for Model {
 impl Renderable<Model> for Model {
     fn view(&self) -> Html<Self> {
         html! {
-            <Pure<Button> callback=|x| {x} text = "Click me!" />
+            <Pure<Button> callback=Msg::from text = "Click me!" />
         }
     }
 }
