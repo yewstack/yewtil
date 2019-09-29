@@ -4,7 +4,7 @@ use yewtil::Pure;
 mod button;
 use crate::button::Button;
 
-pub struct Model { }
+pub struct Model {}
 
 pub enum Msg {
     DoIt,
@@ -15,7 +15,7 @@ impl Component for Model {
     type Properties = ();
 
     fn create(_: Self::Properties, _: ComponentLink<Self>) -> Self {
-        Model { }
+        Model {}
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
@@ -40,4 +40,3 @@ fn main() {
     web_logger::init();
     yew::start_app::<Model>();
 }
-

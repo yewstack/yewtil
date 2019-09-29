@@ -1,15 +1,13 @@
-
-use yewtil::{PureComponent, Emissive, Pure};
-use yew::{Callback, Properties, html};
-
-use crate::{Msg};
+use crate::Msg;
 use yew::virtual_dom::VNode;
+use yew::{html, Callback, Properties};
+use yewtil::{Emissive, Pure, PureComponent};
 
 #[derive(PartialEq, Properties, Emissive)]
 pub struct Button {
-    #[props(required) ]
+    #[props(required)]
     pub callback: Callback<Msg>,
-    pub text: String
+    pub text: String,
 }
 
 impl PureComponent for Button {
@@ -19,4 +17,3 @@ impl PureComponent for Button {
         }
     }
 }
-
