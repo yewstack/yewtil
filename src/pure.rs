@@ -1,6 +1,5 @@
-use yew::{Properties, Html, Component, ComponentLink, ShouldRender, Renderable};
-use crate::{NeqAssign};
-
+use crate::NeqAssign;
+use yew::{Component, ComponentLink, Html, Properties, Renderable, ShouldRender};
 
 pub trait PureComponent: Properties + Emissive + PartialEq + Sized + 'static {
     fn render(&self) -> Html<Pure<Self>>;
@@ -20,7 +19,7 @@ pub trait Emissive {
 #[derive(Debug)]
 pub struct Pure<T>(T);
 
-impl <T: PureComponent + Emissive + PartialEq + 'static> Component for Pure<T> {
+impl<T: PureComponent + Emissive + PartialEq + 'static> Component for Pure<T> {
     type Message = <T as Emissive>::Message;
     type Properties = T;
 
@@ -38,7 +37,7 @@ impl <T: PureComponent + Emissive + PartialEq + 'static> Component for Pure<T> {
     }
 }
 
-impl <T: PureComponent + Emissive + PartialEq + 'static> Renderable<Pure<T>> for Pure<T> {
+impl<T: PureComponent + Emissive + PartialEq + 'static> Renderable<Pure<T>> for Pure<T> {
     fn view(&self) -> Html<Pure<T>> {
         self.0.render()
     }

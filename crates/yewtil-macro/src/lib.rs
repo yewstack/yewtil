@@ -1,12 +1,12 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
-use proc_macro2::{Ident};
+use proc_macro2::Ident;
+use quote::quote;
+use quote::ToTokens;
+use std::convert::TryFrom;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::spanned::Spanned;
-use std::convert::TryFrom;
-use quote::ToTokens;
-use quote::quote;
-use syn::{parse_macro_input, Field, Error, DeriveInput, Type};
+use syn::{parse_macro_input, DeriveInput, Error, Field, Type};
 
 mod util;
 use util::extract_type_from_callback;
@@ -16,7 +16,6 @@ pub fn emissive(tokens: TokenStream) -> TokenStream {
     let input = parse_macro_input!(tokens as DeriveEmissiveInput);
     TokenStream::from(input.into_token_stream())
 }
-
 
 #[derive(Debug)]
 struct CallbackField {
@@ -30,17 +29,19 @@ impl TryFrom<Field> for CallbackField {
     fn try_from(field: Field) -> Result<Self> {
         let message_ty = extract_type_from_callback(&field.ty)
             .map(Clone::clone)
-            .ok_or_else(|| syn::Error::new(field.span(), "Annotated \"emissive\" field was not a ::yew::Callback."))?;
+            .ok_or_else(|| {
+                syn::Error::new(
+                    field.span(),
+                    "Annotated \"emissive\" field was not a ::yew::Callback.",
+                )
+            })?;
 
         Ok(CallbackField {
             name: field.ident.unwrap(),
-            message_ty
+            message_ty,
         })
-
     }
 }
-
-
 
 #[derive(Debug)]
 struct DeriveEmissiveInput {
@@ -67,26 +68,22 @@ impl Parse for DeriveEmissiveInput {
             .collect::<Vec<CallbackField>>();
 
         if callback_fields.len() > 1 {
-            return Err(syn::Error::new(named_fields_span, "There can only be one emissive field. If you want to support more than one, manually implement Emissive."))
+            return Err(syn::Error::new(named_fields_span, "There can only be one emissive field. If you want to support more than one, manually implement Emissive."));
         }
         let callback_field = callback_fields.into_iter().next();
 
         Ok(DeriveEmissiveInput {
             struct_name: input.ident,
-            callback_field
+            callback_field,
         })
     }
 }
-
-
-
-
 
 impl ToTokens for DeriveEmissiveInput {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let Self {
             struct_name,
-            callback_field
+            callback_field,
         } = self;
 
         let message_ty = if let Some(cb_field) = callback_field {
@@ -121,6 +118,5 @@ impl ToTokens for DeriveEmissiveInput {
         };
 
         tokens.extend(emissive_impl);
-
     }
 }
