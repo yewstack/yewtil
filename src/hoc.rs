@@ -19,11 +19,15 @@ pub trait HigherOrderComponent<T>: Sized + 'static
 
     fn create(properties: Self::Properties, link: ComponentLink<Hoc<T, Self>>) -> Self;
 
-    fn mounted(&mut self) -> ShouldRender;
+    fn mounted(&mut self) -> ShouldRender {
+        false
+    }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender;
 
     fn change(&mut self, msg: Self::Properties) -> ShouldRender;
+
+    fn destroy(&mut self) {}
 
     fn to_inner_properties(&self) -> T::Properties;
 
@@ -34,7 +38,7 @@ pub trait HigherOrderComponent<T>: Sized + 'static
 
 impl <T, U> Component for Hoc<T, U>
     where
-        T: Component + Renderable<T> + Properties,
+        T: Component + Renderable<T>,
         U: HigherOrderComponent<T>,
 {
     type Message = U::Message;
@@ -67,7 +71,7 @@ impl <T, U> Component for Hoc<T, U>
 
 impl <T, U> Renderable<Hoc<T,U>> for Hoc<T,U>
 where
-    T: Component + Renderable<T> + Properties,
+    T: Component + Renderable<T>,
     U: HigherOrderComponent<T>,
 {
     fn view(&self) -> VNode<Hoc<T, U>> {
