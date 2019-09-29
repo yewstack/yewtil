@@ -1,4 +1,4 @@
-use yew::{Component, Properties, ShouldRender, ComponentLink, Html, Renderable};
+use yew::{Component, Properties, ShouldRender, ComponentLink, Html, Renderable, html};
 use std::marker::PhantomData;
 use yew::virtual_dom::vcomp::ScopeHolder;
 use yew::virtual_dom::{VNode, VComp};
@@ -29,10 +29,14 @@ pub trait HigherOrderComponent<T>: Sized + 'static
 
     fn destroy(&mut self) {}
 
-    fn to_inner_properties(&self) -> T::Properties;
+    fn to_inner_properties(&self) -> Option<T::Properties>;
 
-    fn render(&self, inner: Html<Hoc<T, Self>>) -> Html<Hoc<T, Self>> {
-        inner
+    fn render(&self, inner: Option<Html<Hoc<T, Self>>>) -> Html<Hoc<T, Self>> {
+        if let Some(inner) = inner {
+            inner
+        } else {
+            html!{}
+        }
     }
 }
 
@@ -75,7 +79,11 @@ where
     U: HigherOrderComponent<T>,
 {
     fn view(&self) -> VNode<Hoc<T, U>> {
-        let inner = create_component::<T, Self>(self.state.to_inner_properties());
+        let inner = if let Some(props) = self.state.to_inner_properties() {
+            Some(create_component::<T, Self>(props))
+        } else {
+            None
+        };
         self.state.render(inner)
     }
 }
