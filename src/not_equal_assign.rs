@@ -11,7 +11,7 @@ pub trait NeqAssign {
     /// # Example
     /// ```
     /// # use yew::{Component, ShouldRender, ComponentLink};
-    /// # use yew::neq_assign::NeqAssign;
+    /// # use yewtil::neq_assign::NeqAssign;
     /// # use yew::Properties;
     /// ##[derive(Properties, PartialEq)]
     ///  struct Props {

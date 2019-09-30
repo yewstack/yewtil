@@ -1,6 +1,5 @@
 mod not_equal_assign;
 mod pure;
-mod hoc;
 
 pub use not_equal_assign::NeqAssign;
 pub use pure::{Emissive, Pure, PureComponent};
