@@ -1,8 +1,8 @@
+#![recursion_limit="256"]
 use yew::{html, Component, ComponentLink, Html, Renderable, ShouldRender};
 use yewtil::fetch::{Fetch, FetchState};
 use yewtil::fetch::unloaded::Unloaded;
 use yewtil::fetch::fetched::Fetched;
-use yewtil::fetch::fetched::Render;
 use std::rc::Rc;
 
 pub struct Model {
@@ -35,9 +35,14 @@ impl Renderable<Model> for Model {
     fn view(&self) -> Html<Self> {
         html! {
             <>
-                <Fetch<String> state = &self.fetch_state>
-                    <Fetched<String>  render=Render::new(|s| html!{s})  />
-                    <Unloaded>
+                <Fetch<String, Msg> state = &self.fetch_state, callback=From::from >
+                    <Fetched<String, Msg>  render=Fetched::render(|s| html!{
+                        <>
+                            {s}
+                            <button onclick=|_| Msg::DoIt>{"Button"}</button>
+                        </>
+                    })  />
+                    <Unloaded<Msg>>
                         <div> {"hello there"} </div>
                     </Unloaded>
                 </Fetch>
