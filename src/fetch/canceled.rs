@@ -1,22 +1,20 @@
-use yew::{Renderable, Properties, Component, Html, ComponentLink, Children, Callback};
+use yew::{Callback, Children, Component, ComponentLink, Html, Properties, Renderable};
 pub struct Canceled<M: 'static> {
-    props: CanceledProps<M>
+    props: CanceledProps<M>,
 }
 
 #[derive(Properties)]
 pub struct CanceledProps<M: 'static> {
     children: Children<Canceled<M>>,
-    pub (crate) callback: Option<Callback<M>>
+    pub(crate) callback: Option<Callback<M>>,
 }
 
-impl <M: 'static> Component for Canceled<M> {
+impl<M: 'static> Component for Canceled<M> {
     type Message = M;
     type Properties = CanceledProps<M>;
 
     fn create(props: Self::Properties, _link: ComponentLink<Self>) -> Self {
-        Canceled {
-            props
-        }
+        Canceled { props }
     }
 
     fn update(&mut self, msg: Self::Message) -> bool {
@@ -27,9 +25,8 @@ impl <M: 'static> Component for Canceled<M> {
     }
 }
 
-
-impl <M> Renderable<Canceled<M>> for Canceled<M> {
-    fn view(&self) -> Html<Self>{
+impl<M> Renderable<Canceled<M>> for Canceled<M> {
+    fn view(&self) -> Html<Self> {
         self.props.children.iter().collect()
     }
 }

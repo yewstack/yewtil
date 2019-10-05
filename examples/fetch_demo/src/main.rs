@@ -1,12 +1,12 @@
-#![recursion_limit="256"]
-use yew::{html, Component, ComponentLink, Html, Renderable, ShouldRender};
-use yewtil::fetch::{Fetch, FetchState};
-use yewtil::fetch::unloaded::Unloaded;
-use yewtil::fetch::fetched::Fetched;
+#![recursion_limit = "256"]
 use std::rc::Rc;
+use yew::{html, Component, ComponentLink, Html, Renderable, ShouldRender};
+use yewtil::fetch::fetched::Fetched;
+use yewtil::fetch::unloaded::Unloaded;
+use yewtil::fetch::{Fetch, FetchStateVariant};
 
 pub struct Model {
-    fetch_state: FetchState<String>
+    fetch_state: FetchStateVariant<String>,
 }
 
 pub enum Msg {
@@ -18,12 +18,15 @@ impl Component for Model {
     type Properties = ();
 
     fn create(_: Self::Properties, _: ComponentLink<Self>) -> Self {
-        Model { fetch_state: FetchState::Fetched(Some(Rc::new("Yeet".to_string()))) }
+        Model {
+            fetch_state: FetchStateVariant::Fetched(Some(Rc::new("Lorem ipsum dolor sit".to_string()))),
+        }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             Msg::DoIt => {
+                log::info!("{:?}", self.fetch_state.make_mut());
                 self.fetch_state.unload();
                 true
             }
@@ -46,7 +49,6 @@ impl Renderable<Model> for Model {
                         <div> {"hello there"} </div>
                     </Unloaded>
                 </Fetch>
-                <button onclick=|_| Msg::DoIt>{"do it"}</button>
             </>
 
         }

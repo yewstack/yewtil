@@ -1,31 +1,40 @@
-use yew::services::fetch::FetchTask;
-use yew::{ShouldRender, Properties, Component, Html, Renderable, ComponentLink, virtual_dom::{VComp, VNode}, Callback};
-use yew::virtual_dom::vcomp::ScopeHolder;
-use yew::virtual_dom::VChild;
-use yew::html::ChildrenRenderer;
-use crate::fetch::unloaded::{Unloaded, UnloadedProps};
-use crate::fetch::fetching::{Fetching, FetchingProps};
+use crate::fetch::canceled::{Canceled, CanceledProps};
 use crate::fetch::failed::{Failed, FailedProps};
 use crate::fetch::fetched::{Fetched, FetchedProps};
-use std::rc::Rc;
-use crate::fetch::canceled::{Canceled, CanceledProps};
-use crate::fetch::persist_fetching::{PersistFetching, PersistFetchingProps};
-use crate::fetch::persist_failed::{PersistFailedProps, PersistFailed};
+use crate::fetch::fetching::{Fetching, FetchingProps};
 use crate::fetch::persist_canceled::PersistCanceled;
+use crate::fetch::persist_failed::{PersistFailed, PersistFailedProps};
+use crate::fetch::persist_fetching::{PersistFetching, PersistFetchingProps};
+use crate::fetch::unloaded::{Unloaded, UnloadedProps};
+use std::rc::Rc;
+use yew::html::ChildrenRenderer;
+use yew::services::fetch::FetchTask;
+use yew::virtual_dom::vcomp::ScopeHolder;
+use yew::virtual_dom::VChild;
+use yew::{
+    virtual_dom::{VComp, VNode},
+    Callback, Component, ComponentLink, Html, Properties, Renderable, ShouldRender,
+};
+use std::fmt;
 
-pub mod unloaded;
-pub mod fetching;
+pub mod canceled;
 pub mod failed;
 pub mod fetched;
-pub mod canceled;
-pub mod persist_fetching;
-pub mod persist_failed;
+pub mod fetching;
 pub mod persist_canceled;
+pub mod persist_failed;
+pub mod persist_fetching;
+pub mod unloaded;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FetchState<T> {
+    variant: FetchStateVariant<T>
+}
 
 // TODO, Wrap this in a newtype to make it impossible to instantiate for users.
 /// Wraps all permutations of the various states a fetch request can be in.
 #[derive(Clone)]
-pub enum FetchState<T> {
+enum FetchStateVariant<T> {
     Unloaded,
     Fetching(Rc<FetchTask>),
     Failed, // TODO include error here.
@@ -36,128 +45,155 @@ pub enum FetchState<T> {
     PersistCanceled(Option<Rc<T>>),
 }
 
-impl <T> PartialEq for FetchState<T> {
+impl <T: fmt::Debug> fmt::Debug for FetchStateVariant<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("FetchStateVariant") // TODO remove this when FetchTask gets Debug implemented for it.
+    }
+}
+
+impl<T> PartialEq for FetchStateVariant<T> {
     fn eq(&self, other: &Self) -> bool {
-        use FetchState as FS;
+        use FetchStateVariant as FS;
         match (self, other) {
-            (FS::Unloaded, FS::Unloaded) | (FS::Fetching(_), FS::Fetching(_)) | (FS::Canceled, FS::Canceled) => true,
-            _ => false
+            (FS::Unloaded, FS::Unloaded)
+            | (FS::Fetching(_), FS::Fetching(_))
+            | (FS::Canceled, FS::Canceled) => true,
+            _ => false,
         }
     }
 }
 
-impl <T> FetchState<T> {
+impl<T: Clone> FetchState<T> {
+    // TODO hand out weak pointers instead of other RCs to the child components, so get_mut can work instead of having to clone _every_time_.
+    pub fn make_mut(&mut self) -> Option<&mut T> {
+        match &mut self.variant {
+            FetchStateVariant::Fetched(Some(data))
+            | FetchStateVariant::PersistFetching(Some(data), _)
+            | FetchStateVariant::PersistFailed(Some(data))
+            | FetchStateVariant::PersistCanceled(Some(data)) => Some(Rc::make_mut(data)),
+            _ => None,
+        }
+    }
+}
+
+impl<T> FetchState<T> {
     pub fn new() -> FetchState<T> {
-        FetchState::Unloaded
+        FetchState{
+            variant: FetchStateVariant::Unloaded
+        }
+    }
+
+    pub fn get(&self) -> Option<&T> {
+        match &self.variant {
+            FetchStateVariant::Fetched(Some(data))
+            | FetchStateVariant::PersistFetching(Some(data), _)
+            | FetchStateVariant::PersistFailed(Some(data))
+            | FetchStateVariant::PersistCanceled(Some(data)) => Some(data.as_ref()),
+            _ => None,
+        }
     }
 
     pub fn unload(&mut self) -> ShouldRender {
-        *self = FetchState::Unloaded;
+        self.variant = FetchStateVariant::Unloaded;
         true
     }
 
+    /// TODO, with neq_assign, this pattern of returning shouldRender may not be needed.
+    /// instead use self.fetch_state.neq_assign(Fetch::fetching(task))
     pub fn fetching(&mut self, task: FetchTask) -> ShouldRender {
-        *self = FetchState::Fetching(Rc::new(task));
+        self.variant = FetchStateVariant::Fetching(Rc::new(task));
         true
     }
-
 
     pub fn fetched(&mut self, data: T) -> ShouldRender {
-        *self = FetchState::Fetched(Some(Rc::new(data)));
+        self.variant = FetchStateVariant::Fetched(Some(Rc::new(data)));
         true
     }
 
     pub fn failed(&mut self) -> ShouldRender {
-        *self = FetchState::Failed;
+        self.variant = FetchStateVariant::Failed;
         true
     }
 
     pub fn cancel(&mut self) -> ShouldRender {
-        *self = FetchState::Canceled;
+        self.variant = FetchStateVariant::Canceled;
         true
     }
 
     /// Will keep the old data around, while a new task is fetched.
     pub fn persist_fetching(&mut self, task: FetchTask) -> ShouldRender {
-        match self {
-            FetchState::Fetched(data)
-            | FetchState::PersistFetching(data, _)
-            | FetchState::PersistFailed(data)
-            | FetchState::PersistCanceled(data)
-            => {
-                let data = data.take(); // TODO, consider making some local type wrapper around option<T> that can't be instantiated, but can be taken from. We don't want fetchstate to be able to be initialized with a None
+        match &mut self.variant {
+            FetchStateVariant::Fetched(data)
+            | FetchStateVariant::PersistFetching(data, _)
+            | FetchStateVariant::PersistFailed(data)
+            | FetchStateVariant::PersistCanceled(data) => {
+                let data = data.take();
                 assert!(data.is_some());
-                *self = FetchState::PersistFetching(data, Rc::new(task));
+                self.variant = FetchStateVariant::PersistFetching(data, Rc::new(task));
             }
             _ => {
-                *self = FetchState::Fetching(Rc::new(task));
+                self.variant = FetchStateVariant::Fetching(Rc::new(task));
             }
         }
         true
     }
-
 
     pub fn persist_failed(&mut self) -> ShouldRender {
-        match self {
-            FetchState::Fetched(data)
-            | FetchState::PersistFetching(data, _)
-            | FetchState::PersistFailed(data)
-            | FetchState::PersistCanceled(data)
-            => {
-                let data = data.take(); // TODO, consider making some local type wrapper around option<T> that can't be instantiated, but can be taken from. We don't want fetchstate to be able to be initialized with a None
+        match &mut self.variant {
+            FetchStateVariant::Fetched(data)
+            | FetchStateVariant::PersistFetching(data, _)
+            | FetchStateVariant::PersistFailed(data)
+            | FetchStateVariant::PersistCanceled(data) => {
+                let data = data.take();
                 assert!(data.is_some());
-                *self = FetchState::PersistFailed(data);
+                self.variant = FetchStateVariant::PersistFailed(data);
             }
             _ => {
-                *self = FetchState::Failed;
+                self.variant = FetchStateVariant::Failed;
             }
         }
         true
     }
 
-
     pub fn persist_canceled(&mut self) -> ShouldRender {
-        match self {
-            FetchState::Fetched(data)
-            | FetchState::PersistFetching(data, _)
-            | FetchState::PersistFailed(data)
-            | FetchState::PersistCanceled(data)
-            => {
-                let data = data.take(); // TODO, consider making some local type wrapper around option<T> that can't be instantiated, but can be taken from. We don't want fetchstate to be able to be initialized with a None
+        match &mut self.variant {
+            FetchStateVariant::Fetched(data)
+            | FetchStateVariant::PersistFetching(data, _)
+            | FetchStateVariant::PersistFailed(data)
+            | FetchStateVariant::PersistCanceled(data) => {
+                let data = data.take();
                 assert!(data.is_some());
-                *self = FetchState::PersistCanceled(data);
+                self.variant = FetchStateVariant::PersistCanceled(data);
             }
             _ => {
-                *self = FetchState::Canceled;
+                self.variant = FetchStateVariant::Canceled;
             }
         }
         true
     }
 
     pub fn unwrap(self) -> Rc<T> {
-        match self {
-            FetchState::Fetched(data)
-            | FetchState::PersistFetching(data,_)
-            | FetchState::PersistFailed(data)
-            | FetchState::PersistCanceled(data)
-            => data.unwrap(),
-            _ => panic!("Tried to unwrap Fetch state where no data was present.")
+        match self.variant {
+            FetchStateVariant::Fetched(data)
+            | FetchStateVariant::PersistFetching(data, _)
+            | FetchStateVariant::PersistFailed(data)
+            | FetchStateVariant::PersistCanceled(data) => data.unwrap(),
+            _ => panic!("Tried to unwrap Fetch state where no data was present."),
         }
     }
 }
 
 ////////////////////////
 
-
 #[derive(Properties)]
 pub struct Fetch<T: 'static, M: 'static> {
     pub children: ChildrenRenderer<FetchVariant<T, M>>,
     #[props(required)]
     pub state: FetchState<T>,
-    pub callback: Option<Callback<M>>
+    pub callback: Option<Callback<M>>,
 }
 
-impl <T: 'static, M: 'static> Component for Fetch<T, M> {
+impl<T: 'static, M: 'static> Component for Fetch<T, M> {
     type Message = M;
     type Properties = Fetch<T, M>;
 
@@ -178,22 +214,24 @@ impl <T: 'static, M: 'static> Component for Fetch<T, M> {
     }
 }
 
-impl <T: 'static, M: 'static> Renderable<Fetch<T, M>> for Fetch<T, M> {
+impl<T: 'static, M: 'static> Renderable<Fetch<T, M>> for Fetch<T, M> {
     fn view(&self) -> Html<Self> {
-        match &self.state {
-            FetchState::Unloaded => self.view_unloaded(),
-            FetchState::Fetching(_) => self.view_fetching(),
-            FetchState::Failed => self.view_failed(),
-            FetchState::Canceled => self.view_canceled(),
-            FetchState::Fetched(data) => self.view_fetched(data.as_ref().unwrap()),
-            FetchState::PersistFetching(data, _) => self.view_persist_fetching(data.as_ref().unwrap()),
-            FetchState::PersistFailed(data) => self.view_persist_failed(data.as_ref().unwrap()),
-            FetchState::PersistCanceled(data) => self.view_persist_canceled(data.as_ref().unwrap())
+        match &self.state.variant {
+            FetchStateVariant::Unloaded => self.view_unloaded(),
+            FetchStateVariant::Fetching(_) => self.view_fetching(),
+            FetchStateVariant::Failed => self.view_failed(),
+            FetchStateVariant::Canceled => self.view_canceled(),
+            FetchStateVariant::Fetched(data) => self.view_fetched(data.as_ref().unwrap()),
+            FetchStateVariant::PersistFetching(data, _) => {
+                self.view_persist_fetching(data.as_ref().unwrap())
+            }
+            FetchStateVariant::PersistFailed(data) => self.view_persist_failed(data.as_ref().unwrap()),
+            FetchStateVariant::PersistCanceled(data) => self.view_persist_canceled(data.as_ref().unwrap()),
         }
     }
 }
 
-impl <T, M: 'static> Fetch<T, M> {
+impl<T, M: 'static> Fetch<T, M> {
     fn view_unloaded(&self) -> Html<Self> {
         self.children
             .iter()
@@ -258,8 +296,7 @@ impl <T, M: 'static> Fetch<T, M> {
             .collect()
     }
 
-
-        fn view_fetched(&self, data: &Rc<T>) -> Html<Self> {
+    fn view_fetched(&self, data: &Rc<T>) -> Html<Self> {
         self.children
             .iter()
             .filter_map(move |mut x| {
@@ -292,7 +329,6 @@ impl <T, M: 'static> Fetch<T, M> {
             .map(|v| v.into())
             .unwrap_or_else(|| self.view_fetching())
     }
-
 
     fn view_persist_failed(&self, data: &Rc<T>) -> Html<Self> {
         self.children
@@ -329,9 +365,6 @@ impl <T, M: 'static> Fetch<T, M> {
     }
 }
 
-
-
-
 pub enum Variants<T: 'static, M: 'static> {
     Unloaded(<Unloaded<M> as Component>::Properties),
     Fetching(<Fetching<M> as Component>::Properties),
@@ -343,64 +376,56 @@ pub enum Variants<T: 'static, M: 'static> {
     PersistCanceled(<PersistCanceled<T, M> as Component>::Properties),
 }
 
-impl <T, M: 'static> From<UnloadedProps<M>> for Variants<T, M> {
+impl<T, M: 'static> From<UnloadedProps<M>> for Variants<T, M> {
     fn from(props: UnloadedProps<M>) -> Self {
         Variants::Unloaded(props)
     }
 }
 
-
-impl <T, M: 'static> From<FetchingProps<M>> for Variants<T, M> {
+impl<T, M: 'static> From<FetchingProps<M>> for Variants<T, M> {
     fn from(props: FetchingProps<M>) -> Self {
         Variants::Fetching(props)
     }
 }
 
-
-impl <T, M: 'static> From<FailedProps<M>> for Variants<T, M> {
+impl<T, M: 'static> From<FailedProps<M>> for Variants<T, M> {
     fn from(props: FailedProps<M>) -> Self {
         Variants::Failed(props)
     }
 }
 
-
-
-impl <T, M: 'static> From<CanceledProps<M>> for Variants<T, M> {
+impl<T, M: 'static> From<CanceledProps<M>> for Variants<T, M> {
     fn from(props: CanceledProps<M>) -> Self {
         Variants::Canceled(props)
     }
 }
-impl <T, M: 'static> From<FetchedProps<T, M>> for Variants<T, M> {
+impl<T, M: 'static> From<FetchedProps<T, M>> for Variants<T, M> {
     fn from(props: FetchedProps<T, M>) -> Self {
         Variants::Fetched(props)
     }
 }
 
-impl <T, M: 'static> From<PersistFetchingProps<T, M>> for Variants<T, M> {
+impl<T, M: 'static> From<PersistFetchingProps<T, M>> for Variants<T, M> {
     fn from(props: PersistFetchingProps<T, M>) -> Self {
         Variants::PersistFetching(props)
     }
 }
 
-impl <T, M: 'static> From<PersistFailedProps<T, M>> for Variants<T, M> {
+impl<T, M: 'static> From<PersistFailedProps<T, M>> for Variants<T, M> {
     fn from(props: PersistFailedProps<T, M>) -> Self {
         Variants::PersistFailed(props)
     }
 }
-
-
-
 
 pub struct FetchVariant<T: 'static, M: 'static> {
     props: Variants<T, M>,
     scope: ScopeHolder<Fetch<T, M>>,
 }
 
-
 impl<CHILD, T: 'static, M: 'static> From<VChild<CHILD, Fetch<T, M>>> for FetchVariant<T, M>
-    where
-        CHILD: Component,
-        CHILD::Properties: Into<Variants<T, M>>,
+where
+    CHILD: Component,
+    CHILD::Properties: Into<Variants<T, M>>,
 {
     fn from(vchild: VChild<CHILD, Fetch<T, M>>) -> Self {
         FetchVariant {
@@ -410,8 +435,7 @@ impl<CHILD, T: 'static, M: 'static> From<VChild<CHILD, Fetch<T, M>>> for FetchVa
     }
 }
 
-
-impl <T, M: 'static> Into<VNode<Fetch<T, M>>> for FetchVariant<T, M> {
+impl<T, M: 'static> Into<VNode<Fetch<T, M>>> for FetchVariant<T, M> {
     fn into(self) -> VNode<Fetch<T, M>> {
         match self.props {
             Variants::Unloaded(props) => VComp::new::<Unloaded<M>>(props, self.scope).into(),
@@ -419,10 +443,15 @@ impl <T, M: 'static> Into<VNode<Fetch<T, M>>> for FetchVariant<T, M> {
             Variants::Failed(props) => VComp::new::<Failed<M>>(props, self.scope).into(),
             Variants::Canceled(props) => VComp::new::<Canceled<M>>(props, self.scope).into(),
             Variants::Fetched(props) => VComp::new::<Fetched<T, M>>(props, self.scope).into(),
-            Variants::PersistFetching(props) => VComp::new::<PersistFetching<T, M>>(props, self.scope).into(),
-            Variants::PersistFailed(props) => VComp::new::<PersistFailed<T, M>>(props, self.scope).into(),
-            Variants::PersistCanceled(props) => VComp::new::<PersistCanceled<T, M>>(props, self.scope).into(),
+            Variants::PersistFetching(props) => {
+                VComp::new::<PersistFetching<T, M>>(props, self.scope).into()
+            }
+            Variants::PersistFailed(props) => {
+                VComp::new::<PersistFailed<T, M>>(props, self.scope).into()
+            }
+            Variants::PersistCanceled(props) => {
+                VComp::new::<PersistCanceled<T, M>>(props, self.scope).into()
+            }
         }
     }
 }
-

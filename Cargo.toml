@@ -10,6 +10,7 @@ description = "Utility crate for Yew"
 [dependencies]
 yew = "0.9.0"
 yewtil-macro = {path = "crates/yewtil-macro"}
+log = "0.4.8"
 
 
 [workspace]
