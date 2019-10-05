@@ -11,3 +11,4 @@ yew = "0.9.0"
 yewtil = {path="../.."}
 web_logger = "0.2.0"
 log = "0.4.8"
+failure = "0.1.5"

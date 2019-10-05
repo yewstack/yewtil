@@ -31,23 +31,23 @@ pub struct FetchState<T> {
     variant: FetchStateVariant<T>
 }
 
-// TODO, Wrap this in a newtype to make it impossible to instantiate for users.
-/// Wraps all permutations of the various states a fetch request can be in.
+/// All permutations of the various states a fetch request can be in.
 #[derive(Clone)]
 enum FetchStateVariant<T> {
     Unloaded,
     Fetching(Rc<FetchTask>),
-    Failed, // TODO include error here.
+    Failed(Rc<::failure::Error>),
     Canceled,
     Fetched(Option<Rc<T>>),
     PersistFetching(Option<Rc<T>>, Rc<FetchTask>),
-    PersistFailed(Option<Rc<T>>),
+    PersistFailed(Option<Rc<T>>, Rc<::failure::Error>),
     PersistCanceled(Option<Rc<T>>),
 }
 
+// TODO remove this when FetchTask gets Debug implemented for it.
 impl <T: fmt::Debug> fmt::Debug for FetchStateVariant<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("FetchStateVariant") // TODO remove this when FetchTask gets Debug implemented for it.
+        f.write_str("FetchStateVariant")
     }
 }
 
@@ -64,12 +64,22 @@ impl<T> PartialEq for FetchStateVariant<T> {
 }
 
 impl<T: Clone> FetchState<T> {
-    // TODO hand out weak pointers instead of other RCs to the child components, so get_mut can work instead of having to clone _every_time_.
+    // TODO consider hand out weak pointers instead of other RCs to the child components, so get_mut can work instead of having to clone _every_time_.
+    // There will likely have to be a WeakFetchState version used by this lib, and only obtainable via calling a method on the FetchState.
+    // Clone will have to be removed for FetchState, and will be replaced with this get_weak() method.
+    //
+    // The problem with a weak version of this is that if the parent changes, but doesn't re-render,
+    // then child components won't get access to the data anymore.
+    // This poses the problem of allowing users to shoot themselves in the foot if they don't read the docs,
+    // especially if this is the only way to do this.
+    // Ideally, the child components could be generic over either Strong or Weak RCs -  preserving the ability to "clone" the parent FetchStateVariant,
+    // but that would be kinda hard to implement.
+    // Maybe a Strong/Weak enum? and have strong() and weak() items?
     pub fn make_mut(&mut self) -> Option<&mut T> {
         match &mut self.variant {
             FetchStateVariant::Fetched(Some(data))
             | FetchStateVariant::PersistFetching(Some(data), _)
-            | FetchStateVariant::PersistFailed(Some(data))
+            | FetchStateVariant::PersistFailed(Some(data), _)
             | FetchStateVariant::PersistCanceled(Some(data)) => Some(Rc::make_mut(data)),
             _ => None,
         }
@@ -77,47 +87,45 @@ impl<T: Clone> FetchState<T> {
 }
 
 impl<T> FetchState<T> {
-    pub fn new() -> FetchState<T> {
-        FetchState{
-            variant: FetchStateVariant::Unloaded
-        }
-    }
-
     pub fn get(&self) -> Option<&T> {
         match &self.variant {
             FetchStateVariant::Fetched(Some(data))
             | FetchStateVariant::PersistFetching(Some(data), _)
-            | FetchStateVariant::PersistFailed(Some(data))
+            | FetchStateVariant::PersistFailed(Some(data), _)
             | FetchStateVariant::PersistCanceled(Some(data)) => Some(data.as_ref()),
             _ => None,
         }
     }
 
-    pub fn unload(&mut self) -> ShouldRender {
-        self.variant = FetchStateVariant::Unloaded;
-        true
+    pub fn unloaded() -> Self {
+        FetchState {
+            variant: FetchStateVariant::Unloaded
+        }
     }
 
-    /// TODO, with neq_assign, this pattern of returning shouldRender may not be needed.
-    /// instead use self.fetch_state.neq_assign(Fetch::fetching(task))
-    pub fn fetching(&mut self, task: FetchTask) -> ShouldRender {
-        self.variant = FetchStateVariant::Fetching(Rc::new(task));
-        true
+    pub fn fetching(task: FetchTask) -> Self {
+        FetchState {
+            variant: FetchStateVariant::Fetching(Rc::new(task))
+        }
     }
 
-    pub fn fetched(&mut self, data: T) -> ShouldRender {
-        self.variant = FetchStateVariant::Fetched(Some(Rc::new(data)));
-        true
+    pub fn fetched(data: T) -> Self {
+        FetchState {
+            variant: FetchStateVariant::Fetched(Some(Rc::new(data)))
+        }
     }
 
-    pub fn failed(&mut self) -> ShouldRender {
-        self.variant = FetchStateVariant::Failed;
-        true
+    pub fn failed(error: ::failure::Error) -> Self {
+        FetchState {
+            variant: FetchStateVariant::Failed(Rc::new(error))
+        }
     }
 
-    pub fn cancel(&mut self) -> ShouldRender {
-        self.variant = FetchStateVariant::Canceled;
-        true
+    pub fn canceled() -> Self {
+        FetchState {
+            variant: FetchStateVariant::Canceled
+        }
+
     }
 
     /// Will keep the old data around, while a new task is fetched.
@@ -125,7 +133,7 @@ impl<T> FetchState<T> {
         match &mut self.variant {
             FetchStateVariant::Fetched(data)
             | FetchStateVariant::PersistFetching(data, _)
-            | FetchStateVariant::PersistFailed(data)
+            | FetchStateVariant::PersistFailed(data, _)
             | FetchStateVariant::PersistCanceled(data) => {
                 let data = data.take();
                 assert!(data.is_some());
@@ -138,18 +146,18 @@ impl<T> FetchState<T> {
         true
     }
 
-    pub fn persist_failed(&mut self) -> ShouldRender {
+    pub fn persist_failed(&mut self, error: ::failure::Error) -> ShouldRender {
         match &mut self.variant {
             FetchStateVariant::Fetched(data)
             | FetchStateVariant::PersistFetching(data, _)
-            | FetchStateVariant::PersistFailed(data)
+            | FetchStateVariant::PersistFailed(data, _)
             | FetchStateVariant::PersistCanceled(data) => {
                 let data = data.take();
                 assert!(data.is_some());
-                self.variant = FetchStateVariant::PersistFailed(data);
+                self.variant = FetchStateVariant::PersistFailed(data, Rc::new(error));
             }
             _ => {
-                self.variant = FetchStateVariant::Failed;
+                self.variant = FetchStateVariant::Failed(Rc::new(error));
             }
         }
         true
@@ -159,7 +167,7 @@ impl<T> FetchState<T> {
         match &mut self.variant {
             FetchStateVariant::Fetched(data)
             | FetchStateVariant::PersistFetching(data, _)
-            | FetchStateVariant::PersistFailed(data)
+            | FetchStateVariant::PersistFailed(data, _)
             | FetchStateVariant::PersistCanceled(data) => {
                 let data = data.take();
                 assert!(data.is_some());
@@ -176,7 +184,7 @@ impl<T> FetchState<T> {
         match self.variant {
             FetchStateVariant::Fetched(data)
             | FetchStateVariant::PersistFetching(data, _)
-            | FetchStateVariant::PersistFailed(data)
+            | FetchStateVariant::PersistFailed(data, _)
             | FetchStateVariant::PersistCanceled(data) => data.unwrap(),
             _ => panic!("Tried to unwrap Fetch state where no data was present."),
         }
@@ -219,13 +227,13 @@ impl<T: 'static, M: 'static> Renderable<Fetch<T, M>> for Fetch<T, M> {
         match &self.state.variant {
             FetchStateVariant::Unloaded => self.view_unloaded(),
             FetchStateVariant::Fetching(_) => self.view_fetching(),
-            FetchStateVariant::Failed => self.view_failed(),
+            FetchStateVariant::Failed(error) => self.view_failed(&error),
             FetchStateVariant::Canceled => self.view_canceled(),
             FetchStateVariant::Fetched(data) => self.view_fetched(data.as_ref().unwrap()),
             FetchStateVariant::PersistFetching(data, _) => {
                 self.view_persist_fetching(data.as_ref().unwrap())
             }
-            FetchStateVariant::PersistFailed(data) => self.view_persist_failed(data.as_ref().unwrap()),
+            FetchStateVariant::PersistFailed(data, error) => self.view_persist_failed(data.as_ref().unwrap(), &error),
             FetchStateVariant::PersistCanceled(data) => self.view_persist_canceled(data.as_ref().unwrap()),
         }
     }
@@ -264,12 +272,13 @@ impl<T, M: 'static> Fetch<T, M> {
             .collect() // Won't show anything if not specified.
     }
 
-    fn view_failed(&self) -> Html<Self> {
+    fn view_failed(&self, error: &Rc<::failure::Error>) -> Html<Self> {
         self.children
             .iter()
             .filter_map(move |mut x| {
                 if let Variants::Failed(ref mut failed) = x.props {
                     failed.callback = self.callback.clone();
+                    failed.error = Some(error.clone());
                     Some(x)
                 } else {
                     None
@@ -330,12 +339,13 @@ impl<T, M: 'static> Fetch<T, M> {
             .unwrap_or_else(|| self.view_fetching())
     }
 
-    fn view_persist_failed(&self, data: &Rc<T>) -> Html<Self> {
+    fn view_persist_failed(&self, data: &Rc<T>, error: &Rc<::failure::Error>) -> Html<Self> {
         self.children
             .iter()
             .filter_map(move |mut x| {
                 if let Variants::PersistFailed(ref mut failed) = x.props {
                     failed.data = Some(data.clone());
+                    failed.error = Some(error.clone());
                     failed.callback = self.callback.clone();
                     Some(x)
                 } else {
@@ -344,7 +354,7 @@ impl<T, M: 'static> Fetch<T, M> {
             })
             .next()
             .map(|v| v.into())
-            .unwrap_or_else(|| self.view_failed()) // Default to viewing the failed case if no PersistFailed case is supplied
+            .unwrap_or_else(|| self.view_failed(error)) // Default to viewing the failed case if no PersistFailed case is supplied
     }
 
     fn view_persist_canceled(&self, data: &Rc<T>) -> Html<Self> {

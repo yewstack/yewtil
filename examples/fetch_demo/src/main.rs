@@ -1,16 +1,16 @@
 #![recursion_limit = "256"]
-use std::rc::Rc;
 use yew::{html, Component, ComponentLink, Html, Renderable, ShouldRender};
 use yewtil::fetch::fetched::Fetched;
 use yewtil::fetch::unloaded::Unloaded;
-use yewtil::fetch::{Fetch, FetchStateVariant};
+use yewtil::fetch::{Fetch, FetchState};
+use yewtil::NeqAssign;
 
 pub struct Model {
-    fetch_state: FetchStateVariant<String>,
+    fetch_state: FetchState<String>,
 }
 
 pub enum Msg {
-    DoIt,
+    DataLoaded,
 }
 
 impl Component for Model {
@@ -19,16 +19,14 @@ impl Component for Model {
 
     fn create(_: Self::Properties, _: ComponentLink<Self>) -> Self {
         Model {
-            fetch_state: FetchStateVariant::Fetched(Some(Rc::new("Lorem ipsum dolor sit".to_string()))),
+            fetch_state: FetchState::unloaded()
         }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
-            Msg::DoIt => {
-                log::info!("{:?}", self.fetch_state.make_mut());
-                self.fetch_state.unload();
-                true
+            Msg::DataLoaded => {
+                self.fetch_state.neq_assign(FetchState::fetched("Lorem Ipsum Dolor Sit".to_string()))
             }
         }
     }
@@ -41,16 +39,15 @@ impl Renderable<Model> for Model {
                 <Fetch<String, Msg> state = &self.fetch_state, callback=From::from >
                     <Fetched<String, Msg>  render=Fetched::render(|s| html!{
                         <>
-                            {s}
-                            <button onclick=|_| Msg::DoIt>{"Button"}</button>
+                            <div> {s} </div>
                         </>
                     })  />
                     <Unloaded<Msg>>
                         <div> {"hello there"} </div>
+                        <button onclick=|_| Msg::DataLoaded>{"Load Data"}</button>
                     </Unloaded>
                 </Fetch>
             </>
-
         }
     }
 }
