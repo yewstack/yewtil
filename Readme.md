@@ -15,7 +15,7 @@ This should make it much easier to define simple Components that don't hold stat
 * Fetch Monad or Component - a datatype that holds either a fetch task, nothing, a network/serialization error, or a resolved data type and is able to render itself.
 
 ## Demo
-Check out the [demo example](https://github.com/hgzimmerman/yewtil/examples/demo/) to see how Pure Components work.
+Check out the [demo example](https://github.com/hgzimmerman/yewtil/tree/master/examples/demo) to see how Pure Components work.
 
 
 ## Update Schedule
