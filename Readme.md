@@ -17,6 +17,57 @@ This should make it much easier to define simple Components that don't hold stat
 ## Demo
 Check out the [demo example](https://github.com/hgzimmerman/yewtil/tree/master/examples/demo) to see how Pure Components work.
 
+## Example
+neq_assign:
+```rust
+fn change(&mut self, props: Self::Properties) -> ShouldRender {
+    self.props.neq_assign(props)
+}
+```
+
+-------------
+
+Pure Component:
+```rust
+pub type Button = Pure<PureButton>;
+
+#[derive(PartialEq, Properties, Emissive)]
+pub struct PureButton {
+    #[props(required)]
+    pub callback: Callback<Msg>,
+    pub text: String,
+}
+
+impl PureComponent for PureButton {
+    fn render(&self) -> VNode<Pure<Self>> {
+        html! {
+            <button onclick=|_| Msg::DoIt>{ &self.text }</button>
+        }
+    }
+}
+```
+------
+
+Fetch wrapper:
+```rust
+html! {
+    <Fetch<String, Msg> state = &self.fetch_state, callback=From::from >
+        <Unloaded<Msg>>
+            <div> {"hello there"} </div>
+            <button onclick=|_| Msg::DataLoaded>{"Load Data"}</button>
+        </Unloaded>
+        <Fetching<Msg>>
+            {"Loading"}
+        </Fetching>
+        <Fetched<String, Msg>  render=Fetched::render(|data| html!{
+            <div> {data} </div>
+        })  />
+        <Failed<Msg>>
+          {"Couldn't get the data."}
+        </Failed>
+    </Fetch>
+}
+```
 
 ## Update Schedule
 This crate will target stable Yew.
