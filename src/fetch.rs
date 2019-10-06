@@ -26,6 +26,7 @@ pub mod persist_failed;
 pub mod persist_fetching;
 pub mod unloaded;
 
+/// The state of a fetch request.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FetchState<T> {
     variant: FetchStateVariant<T>
@@ -64,7 +65,7 @@ impl<T> PartialEq for FetchStateVariant<T> {
 }
 
 impl<T: Clone> FetchState<T> {
-    // TODO consider hand out weak pointers instead of other RCs to the child components, so get_mut can work instead of having to clone _every_time_.
+    // TODO consider handing out weak pointers instead of other RCs to the child components, so get_mut can work instead of having to clone _every_time_.
     // There will likely have to be a WeakFetchState version used by this lib, and only obtainable via calling a method on the FetchState.
     // Clone will have to be removed for FetchState, and will be replaced with this get_weak() method.
     //
@@ -97,18 +98,21 @@ impl<T> FetchState<T> {
         }
     }
 
+    /// Creates an unleaded state.
     pub fn unloaded() -> Self {
         FetchState {
             variant: FetchStateVariant::Unloaded
         }
     }
 
+    /// Creates a fetching state.
     pub fn fetching(task: FetchTask) -> Self {
         FetchState {
             variant: FetchStateVariant::Fetching(Rc::new(task))
         }
     }
 
+    /// Creates a fetched state.
     pub fn fetched(data: T) -> Self {
         FetchState {
             variant: FetchStateVariant::Fetched(Some(Rc::new(data)))
@@ -128,6 +132,7 @@ impl<T> FetchState<T> {
 
     }
 
+    // TODO consider making this take Self, task -> Self
     /// Will keep the old data around, while a new task is fetched.
     pub fn persist_fetching(&mut self, task: FetchTask) -> ShouldRender {
         match &mut self.variant {
