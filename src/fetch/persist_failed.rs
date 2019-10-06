@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use yew::{Callback, Children, Component, ComponentLink, Html, Properties, Renderable};
+use yew::{Callback, Children, Component, ComponentLink, Html, Properties};
 
 pub struct PersistFailed<T: 'static, M: 'static> {
     props: PersistFailedProps<T, M>,
@@ -54,14 +54,14 @@ impl<T: 'static, M: 'static> Component for PersistFailed<T, M> {
         }
         false
     }
-}
 
-impl<T: 'static, M: 'static> Renderable<PersistFailed<T, M>> for PersistFailed<T, M> {
     fn view(&self) -> Html<Self> {
         if let Some(render) = &self.props.render.render {
             (render)(&self.props.data.as_ref().unwrap(), &self.props.error.as_ref().unwrap())
         } else {
             self.props.children.iter().collect()
         }
+
     }
 }
+

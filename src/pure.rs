@@ -1,5 +1,5 @@
 use crate::NeqAssign;
-use yew::{Component, ComponentLink, Html, Properties, Renderable, ShouldRender};
+use yew::{Component, ComponentLink, Html, Properties, ShouldRender};
 
 pub trait PureComponent: Properties + Emissive + PartialEq + Sized + 'static {
     fn render(&self) -> Html<Pure<Self>>;
@@ -35,10 +35,9 @@ impl<T: PureComponent + Emissive + PartialEq + 'static> Component for Pure<T> {
     fn change(&mut self, props: Self::Properties) -> ShouldRender {
         self.0.neq_assign(props)
     }
-}
 
-impl<T: PureComponent + Emissive + PartialEq + 'static> Renderable<Pure<T>> for Pure<T> {
-    fn view(&self) -> Html<Pure<T>> {
+    fn view(&self) -> Html<Self> {
         self.0.render()
     }
 }
+

@@ -1,4 +1,4 @@
-use yew::{Callback, Children, Component, ComponentLink, Html, Properties, Renderable};
+use yew::{Callback, Children, Component, ComponentLink, Html, Properties};
 use std::rc::Rc;
 
 pub struct Failed<M: 'static> {
@@ -53,9 +53,7 @@ impl<M: 'static> Component for Failed<M> {
         }
         false
     }
-}
 
-impl<M: 'static> Renderable<Failed<M>> for Failed<M> {
     fn view(&self) -> Html<Self> {
         if let Some(render) = &self.props.render.render {
             (render)(&self.props.error.as_ref().unwrap())

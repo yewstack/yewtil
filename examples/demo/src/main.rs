@@ -1,4 +1,4 @@
-use yew::{html, Component, ComponentLink, Html, Renderable, ShouldRender};
+use yew::{html, Component, ComponentLink, Html, ShouldRender};
 
 mod button;
 use crate::button::Button;
@@ -25,9 +25,7 @@ impl Component for Model {
             }
         }
     }
-}
 
-impl Renderable<Model> for Model {
     fn view(&self) -> Html<Self> {
         html! {
             <Button callback=Msg::from text = "Click me!" />
