@@ -1,5 +1,5 @@
 #![recursion_limit = "256"]
-use yew::{html, Component, ComponentLink, Html, Renderable, ShouldRender};
+use yew::{html, Component, ComponentLink, Html, ShouldRender};
 use yewtil::fetch::fetched::Fetched;
 use yewtil::fetch::unloaded::Unloaded;
 use yewtil::fetch::{Fetch, FetchState};
@@ -30,27 +30,25 @@ impl Component for Model {
             }
         }
     }
-}
 
-impl Renderable<Model> for Model {
     fn view(&self) -> Html<Self> {
         html! {
-            <>
-                <Fetch<String, Msg> state = &self.fetch_state, callback=From::from >
-                    <Fetched<String, Msg>  render=Fetched::render(|s| html!{
-                        <>
-                            <div> {s} </div>
-                        </>
-                    })  />
-                    <Unloaded<Msg>>
-                        <div> {"hello there"} </div>
-                        <button onclick=|_| Msg::DataLoaded>{"Load Data"}</button>
-                    </Unloaded>
-                </Fetch>
-            </>
+            <Fetch<String, Msg> state = &self.fetch_state, callback=From::from >
+                <Fetched<String, Msg>  render=Fetched::render(|s| html!{
+                    <>
+                        <div> {s} </div>
+                    </>
+                })  />
+                <Unloaded<Msg>>
+                    <div> {"hello there"} </div>
+                    <button onclick=|_| Msg::DataLoaded>{"Load Data"}</button>
+                </Unloaded>
+            </Fetch>
         }
     }
 }
+
+
 
 fn main() {
     web_logger::init();

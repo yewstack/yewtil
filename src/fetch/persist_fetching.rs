@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use yew::{Callback, Children, Component, ComponentLink, Html, Properties, Renderable};
+use yew::{Callback, Children, Component, ComponentLink, Html, Properties};
 
 pub struct PersistFetching<T: 'static, M: 'static> {
     props: PersistFetchingProps<T, M>,
@@ -53,9 +53,7 @@ impl<T: 'static, M: 'static> Component for PersistFetching<T, M> {
         }
         false
     }
-}
 
-impl<T: 'static, M: 'static> Renderable<PersistFetching<T, M>> for PersistFetching<T, M> {
     fn view(&self) -> Html<Self> {
         if let Some(render) = &self.props.render.render {
             (render)(&self.props.data.as_ref().unwrap())
@@ -64,3 +62,4 @@ impl<T: 'static, M: 'static> Renderable<PersistFetching<T, M>> for PersistFetchi
         }
     }
 }
+

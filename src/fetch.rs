@@ -13,7 +13,7 @@ use yew::virtual_dom::vcomp::ScopeHolder;
 use yew::virtual_dom::VChild;
 use yew::{
     virtual_dom::{VComp, VNode},
-    Callback, Component, ComponentLink, Html, Properties, Renderable, ShouldRender,
+    Callback, Component, ComponentLink, Html, Properties, ShouldRender,
 };
 use std::fmt;
 
@@ -225,10 +225,8 @@ impl<T: 'static, M: 'static> Component for Fetch<T, M> {
         *self = props;
         true
     }
-}
 
-impl<T: 'static, M: 'static> Renderable<Fetch<T, M>> for Fetch<T, M> {
-    fn view(&self) -> Html<Self> {
+    fn view(&self) -> VNode<Self> {
         match &self.state.variant {
             FetchStateVariant::Unloaded => self.view_unloaded(),
             FetchStateVariant::Fetching(_) => self.view_fetching(),
@@ -243,6 +241,7 @@ impl<T: 'static, M: 'static> Renderable<Fetch<T, M>> for Fetch<T, M> {
         }
     }
 }
+
 
 impl<T, M: 'static> Fetch<T, M> {
     fn view_unloaded(&self) -> Html<Self> {

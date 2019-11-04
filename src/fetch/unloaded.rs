@@ -1,4 +1,4 @@
-use yew::{Callback, Children, Component, ComponentLink, Html, Properties, Renderable};
+use yew::{Callback, Children, Component, ComponentLink, Html, Properties};
 pub struct Unloaded<M: 'static> {
     props: UnloadedProps<M>,
 }
@@ -23,10 +23,9 @@ impl<M: 'static> Component for Unloaded<M> {
         }
         false
     }
-}
 
-impl<M: 'static> Renderable<Unloaded<M>> for Unloaded<M> {
     fn view(&self) -> Html<Self> {
         self.props.children.iter().collect()
     }
 }
+

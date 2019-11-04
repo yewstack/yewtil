@@ -1,4 +1,4 @@
-use yew::{Callback, Children, Component, ComponentLink, Html, Properties, Renderable};
+use yew::{Callback, Children, Component, ComponentLink, Html, Properties};
 pub struct Fetching<M: 'static> {
     props: FetchingProps<M>,
 }
@@ -23,9 +23,7 @@ impl<M: 'static> Component for Fetching<M> {
         }
         false
     }
-}
 
-impl<M> Renderable<Fetching<M>> for Fetching<M> {
     fn view(&self) -> Html<Self> {
         self.props.children.iter().collect()
     }
