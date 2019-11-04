@@ -1,6 +1,6 @@
 use yew::{Component, ComponentLink, Html, ShouldRender};
 
-use yewtil::dsl::{tag, list, text, BoxedVNodeProducer};
+use yewtil::dsl::{tag, list, text, BoxedVNodeProducer, populated_list};
 
 pub struct Model {}
 
@@ -34,12 +34,12 @@ impl Component for Model {
                         .child(text("Paragraph content"))
                 )
                 .child(
-                    list()
-                        .child(
-                            tag("b")
-                                .child(text("Bolded"))
-                        )
-                        .child(text("Normal text"))
+                    populated_list(vec![
+                        tag("b")
+                            .child(text("Bolded"))
+                            .into(),
+                        text("Normal text").into()
+                    ])
                 )
             )
             .build()

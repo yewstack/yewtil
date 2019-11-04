@@ -11,8 +11,8 @@ Currently this crate supports two features.
 * Pure Components - implement pure components using two traits: `PureComponent` and `Emissive`, the latter of which can be derived in most cases. 
 This should make it much easier to define simple Components that don't hold state.
 
-## Upcoming Features
-* Fetch Monad or Component - a datatype that holds either a fetch task, nothing, a network/serialization error, or a resolved data type and is able to render itself.
+## Work In Progress Features
+* Function based DSL that can be used instead of the `html!` macro. 
 
 ## Demo
 Check out the [demo example](https://github.com/hgzimmerman/yewtil/tree/master/examples/demo) to see how Pure Components work.
