@@ -97,7 +97,6 @@ impl <T> Lrc<T> {
             // If the ptr is shared, allocate a new node.
             self.push_head(Node::new(element));
         }
-//        self.prune_dead_nodes(); // TODO consider removing
     }
 
     /// Replace the head with a new item using a reference to the current head.
@@ -126,25 +125,6 @@ impl <T> Lrc<T> {
             *self = prev;
         }
     }
-
-//    // TODO, after fixing a drop-related bug, I think that this can be removed.
-//    /// Removes nodes that don't have any references.
-//    fn prune_dead_nodes(&mut self) {
-//        unsafe {
-//            let mut current: NonNull<Node<T>> = self.head.unwrap();
-//            while let Some(mut next) = current.as_mut().next {
-//                let next_node: &mut Node<T> = next.as_mut();
-//                if next_node.get_count() < 1 {
-//                    // Tell the next next node (if it exists) to point its prev value at the current node
-//                    next_node.next.map(|mut next| next.as_mut().prev = Some(current));
-//                    // tell the current node's next to point to the next next node.
-//                    current.as_mut().next = next_node.next;
-//                } else {
-//                    current = next;
-//                }
-//            }
-//        }
-//    }
 
     /// Gets a prior value the pointer had (if any).
     ///
