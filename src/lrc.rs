@@ -86,7 +86,6 @@ pub struct Lrc<T> {
 impl <T> Lrc<T> {
     // TODO implement a history iterator.
     // TODO implement a history iterator with a zipped list of counts for the items.
-    // TODO Allow walking back and forth on the history - moving a new item onto the head. older() -> Option<Self>, newer() -> Option<Self>
     // TODO Consider allowing multiple prev pointers
 
 
@@ -137,6 +136,29 @@ impl <T> Lrc<T> {
                 }
             }
         }
+    }
+
+    /// Gets a prior value the pointer had (if any).
+    ///
+    /// It walks down the list, replacing the head as it creates a new Lrc.
+    pub fn older(&self) -> Option<Self> {
+        self.get_ref_head_node().next.map(|ptr| {
+            unsafe {ptr.as_ref().inc_count();}
+            Lrc {
+                head: Some(ptr)
+            }
+        })
+    }
+    /// Gets a newer value the pointer has had (if any).
+    ///
+    /// It walks up the list, replacing the head as it creates a new Lrc.
+    pub fn newer(&self) -> Option<Self> {
+        self.get_ref_head_node().prev.map(|ptr| {
+            unsafe {ptr.as_ref().inc_count();}
+            Lrc {
+                head: Some(ptr)
+            }
+        })
     }
 
     /// Push a new node to the head of the Lrc.
