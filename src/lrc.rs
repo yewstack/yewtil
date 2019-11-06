@@ -84,6 +84,13 @@ pub struct Lrc<T> {
 }
 
 impl <T> Lrc<T> {
+    // TODO implement a history iterator.
+    // TODO implement a history iterator with a zipped list of counts for the items.
+    // TODO Allow walking back and forth on the history - moving a new item onto the head. older() -> Option<Self>, newer() -> Option<Self>
+    // TODO Consider allowing multiple prev pointers
+
+
+    /// Allocates the element on the heap next to a count and prev/next pointers.
     pub fn new(element: T) -> Self {
         let node = Node::new(element);
         Lrc {
