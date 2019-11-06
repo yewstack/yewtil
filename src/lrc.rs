@@ -4,6 +4,8 @@ use std::ptr::NonNull;
 use std::cell::Cell;
 use std::fmt;
 use std::ops::Deref;
+use std::hash::{Hash, Hasher};
+use failure::_core::cmp::Ordering;
 
 type IsZero = bool;
 
@@ -66,7 +68,7 @@ impl <T> Node<T> {
 /// The remaining elements represent shared pointers whose values have changed.
 /// A Lrc pointer can swap its value to the newest modification along the chain.
 ///
-/// The LRC allows cheap cloning like an Rc pointer,
+/// The LRC allows cheap cloning like an `Rc` pointer,
 /// but mutating the value when it is shared will cause a new element to be allocated in its place.
 /// This new node can access the previous ones, as long as the other Lrcs still exist.
 ///
@@ -79,7 +81,7 @@ pub struct Lrc<T> {
 
 impl <T> Lrc<T> {
 
-    /// Allocates the element on the heap next to a count and prev/next pointers.
+    /// Allocates the element on the heap next to a reference counter and next and previous pointers.
     pub fn new(element: T) -> Self {
         let node = Node::new(element);
         Lrc {
@@ -89,6 +91,21 @@ impl <T> Lrc<T> {
 
 
     /// Sets a new value as the head, pushing the previous head to the second node in the list.
+    ///
+    /// This will not allocate if this Lrc has exclusive access to the node whose value is being set.
+    /// It will update the head nodes value in that case.
+    ///
+    /// If the Lrc's head is shared with another Lrc, it will push a new node onto its head containing
+    /// the new value. Unless the Lrc is cloned, or another Lrc updates to have this value, it will have
+    /// exclusive access over this node, and calling set will remain cheap.
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::lrc::Lrc;
+    /// let mut lrc = Lrc::new(0);
+    /// lrc.set(1);
+    /// assert_eq!(lrc.as_ref(), &1);
+    /// ```
     pub fn set(&mut self, element: T) {
         if self.is_exclusive() {
             // Directly assign the element if the ptr has exclusive access.
@@ -99,7 +116,15 @@ impl <T> Lrc<T> {
         }
     }
 
-    /// Replace the head with a new item using a reference to the current head.
+    /// Set the head with a new item using a reference to the current head.
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::lrc::Lrc;
+    /// let mut lrc = Lrc::new(0);
+    /// lrc.alter(|current| current + 1);
+    /// assert_eq!(lrc.as_ref(), &1);
+    /// ```
     pub fn alter<F: Fn(&T) -> T>(&mut self, f: F) {
         let current_head_value = &self.get_ref_head_node().element;
         let new_head_value = f(current_head_value);
@@ -107,7 +132,21 @@ impl <T> Lrc<T> {
     }
 
 
-    /// Gets a mutable reference to the owned value if there are no other Lrcs referencing it.
+    /// Gets a mutable reference to the owned value if this Lrc has exclusive ownership over its data.
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::lrc::Lrc;
+    /// let mut lrc = Lrc::new(1);
+    ///
+    /// let inner = lrc.get_mut();
+    /// assert_eq!(inner, Some(&mut 1));
+    ///
+    /// let lrc_clone = lrc.clone();
+    ///
+    /// let inner = lrc.get_mut();
+    /// assert_eq!(inner, None, "Can't get reference because lrc doesn't have exclusive ownership.");
+    /// ```
     pub fn get_mut(&mut self) -> Option<&mut T> {
         if self.is_exclusive() {
             let node = self.get_mut_head_node();
@@ -118,8 +157,49 @@ impl <T> Lrc<T> {
         }
     }
 
-    // If this Lrc is shared, and its shared item has been changed,
-    // this will update this lrc to have the most up-to-date value (held currently by one of its clones).
+    #[allow(dead_code)]
+    // TODO finish implementing this.
+    fn try_unwrap(self) -> Result<T, Self> {
+        if self.is_exclusive() {
+            let head: NonNull<Node<T>> = self.head.unwrap();
+            unsafe {
+                // TODO the expectation would be to use Option<T> in the node so it can be taken here.
+//                let mut element: T = std::mem::zeroed().unwrap(); // TODO dropping a zeroed representation is certianly going to cause undefined behavior for any T that uses pointers.
+//                std::mem::swap(&(*head.as_mut()).element, &mut element);
+                let element = unimplemented!();
+
+                (*head.as_ptr()).prev.as_mut().map(|prev| {
+                    prev.as_mut().next = (*head.as_ptr()).next.take();
+                });
+
+                (*head.as_ptr()).next.as_mut().map(|next| {
+                    next.as_mut().prev = (*head.as_ptr()).prev.take();
+                });
+
+                std::ptr::drop_in_place(head.as_ptr());
+
+                Ok(element)
+            }
+        } else {
+            Err(self)
+        }
+    }
+
+    /// If this Lrc is shared, and one or more of its shared Lrcs has been modified,
+    /// this will update this lrc to have the most up-to-date value (held currently by one of its clones).
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::lrc::Lrc;
+    /// let mut lrc = Lrc::new(0);
+    ///
+    /// let mut cloned_lrc = lrc.clone();
+    /// cloned_lrc.set(1);
+    /// assert_eq!(lrc.as_ref(), &0);
+    ///
+    /// lrc.update();
+    /// assert_eq!(lrc.as_ref(), &1);
+    /// ```
     pub fn update(&mut self) {
         while let Some(prev) = self.next_back() {
             *self = prev;
@@ -137,6 +217,7 @@ impl <T> Lrc<T> {
             }
         })
     }
+
     /// Gets a newer value the pointer has had (if any).
     ///
     /// It walks up the list, replacing the head as it creates a new Lrc.
@@ -149,6 +230,17 @@ impl <T> Lrc<T> {
         })
     }
 
+    /// Compares head pointers for equality.
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::lrc::Lrc;
+    /// let lrc1 = Lrc::new(10);
+    /// let lrc2 = Lrc::new(10);
+    ///
+    /// assert!(lrc1 == lrc2, "Values are the same");
+    /// assert!(!Lrc::ptr_eq(&lrc1, &lrc2), "But they are behind different pointers");
+    /// ```
     pub fn ptr_eq(lhs: &Self, rhs: &Self) -> bool {
         lhs.head.unwrap().eq(&rhs.head.unwrap())
     }
@@ -170,7 +262,9 @@ impl <T> Lrc<T> {
                     // Unless it is owned by a cloned lrc, this will mark it as dead, and it will be pruned
                     // the next time `prune_dead_nodes` is run.
                     if (*head.as_ptr()).dec_count() {
+                        // TODO remove this dead code if no one ever manages to trigger it.
                         debug_assert!(false, "This code should be dead, due to a condition in set that prevents push_head from being called when the count == 1");
+                        // This is what should happen anyways, but reaching this instruction should be impossible.
                         std::ptr::drop_in_place(head.as_ptr());
                     }
                 },
@@ -180,11 +274,33 @@ impl <T> Lrc<T> {
         self.head = node;
     }
 
-    /// Gets the count of the head element
+    /// Gets the reference count of the head node.
+    /// ```
+    ///# use yewtil::lrc::Lrc;
+    /// let lrc = Lrc::new(1);
+    /// let count = (&lrc).get_count();
+    /// assert_eq!(count, 1);
+    ///
+    /// let _lrc_clone_1 = lrc.clone();
+    /// let count = (&lrc).get_count();
+    /// assert_eq!(count, 2);
+    ///
+    /// let _lrc_clone_2 = lrc.clone();
+    /// let count = (&lrc).get_count();
+    /// assert_eq!(count, 3);
+    /// ```
     pub fn get_count(&self) -> usize {
         self.get_ref_head_node().get_count()
     }
 
+    /// Returns true if no other Lrcs point to the head node.
+    /// ```
+    ///# use yewtil::lrc::Lrc;
+    /// let lrc = Lrc::new(1);
+    /// assert!(lrc.is_exclusive());
+    /// let _lrc_clone = lrc.clone();
+    /// assert!(!lrc.is_exclusive());
+    /// ```
     pub fn is_exclusive(&self) -> bool {
         self.get_count() == 1
     }
@@ -223,6 +339,23 @@ impl <T> Lrc<T> {
 impl <T: Clone> Lrc<T> {
     /// Provides a mutable reference to the head's value.
     /// If the head is shared with another LRC, this will clone the head to ensure exclusive access.
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::lrc::Lrc;
+    /// let mut lrc = Lrc::new(1);
+    /// let _lrc_clone = lrc.clone();
+    ///
+    /// assert_eq!((&lrc).get_count(), 2, "There are two Lrcs pointing to the same data.");
+    /// assert_eq!(lrc.len(), 1, "The Lrc has a single node.");
+    ///
+    /// *lrc.make_mut() = 2;
+    /// assert_eq!((&lrc).get_count(), 1, "This Lrc has exclusive ownership of this data.");
+    /// assert_eq!(lrc.len(), 2, "The other lrc is pointing to the node that holds the value '1'.");
+    ///
+    /// *lrc.make_mut() = 3;
+    /// assert_eq!(lrc.len(), 2, "This Lrc is still exclusive, so no more allocations are needed.");
+    /// ```
     pub fn make_mut(&mut self) -> &mut T {
         // Use this to smuggle the copy past the borrow checker.
         if self.get_count() > 1 {
@@ -278,6 +411,25 @@ impl <T: PartialEq> PartialEq for Lrc<T> {
                 _ => false
             }
         }
+    }
+}
+
+impl <T: Eq> Eq for Lrc<T> {}
+
+impl <T: PartialOrd> PartialOrd for Lrc<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.get_ref_head_node().element.partial_cmp(&other.get_ref_head_node().element)
+    }
+}
+impl <T: Ord> Ord for Lrc<T> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.get_ref_head_node().element.cmp(&other.get_ref_head_node().element)
+    }
+}
+
+impl <T: Hash> Hash for Lrc<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.get_ref_head_node().element.hash(state)
     }
 }
 
