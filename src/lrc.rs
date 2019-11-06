@@ -1,10 +1,9 @@
 use std::ptr::NonNull;
 use std::cell::Cell;
 use std::fmt;
-use failure::_core::fmt::{Formatter, Error};
 use std::ops::Deref;
 
-pub type IsZero = bool;
+type IsZero = bool;
 
 
 struct Node<T> {
@@ -52,7 +51,7 @@ impl <T> Node<T> {
 
 impl <T: PartialEq> PartialEq for Node<T> {
     fn eq(&self, other: &Self) -> bool {
-        unsafe{self.element.eq(&other.element)}
+        self.element.eq(&other.element)
     }
 }
 
@@ -64,9 +63,6 @@ impl <T: fmt::Debug> fmt::Debug for Node<T> {
             .finish()
     }
 }
-
-
-
 
 
 /// Linked Reference Counted pointer
@@ -86,7 +82,7 @@ pub struct Lrc<T> {
 }
 
 impl <T> Lrc<T> {
-    fn new(element: T) -> Self {
+    pub fn new(element: T) -> Self {
         let node = Node::new(element);
         Lrc {
             head: Some(node.into_not_null())
@@ -105,14 +101,14 @@ impl <T> Lrc<T> {
         self.prune_dead_nodes()
     }
 
+    /// Gets a mutable reference to the owned value if there are no other Lrcs referencing it.
     pub fn get_mut(&mut self) -> Option<&mut T> {
-        unsafe {
-            let node = self.head.as_mut().unwrap().as_mut();
-            if node.get_count() == 0 {
-                Some(&mut node.element)
-            } else {
-                None
-            }
+        let node = self.get_mut_head_node();
+        if node.get_count() <= 1 {
+            // Only this node has ownership, or it is marked dead.
+            Some(&mut node.element)
+        } else {
+            None
         }
     }
 
@@ -138,8 +134,8 @@ impl <T> Lrc<T> {
     /// Because the head represents the active value for the Lrc,
     /// it effectively marks the old head for deletion if it wasn't already copied.
     fn push_head(&mut self, mut node: Node<T>) {
+        debug_assert_eq!(node.prev, None);
         node.next = self.head;
-        node.prev = None; // TODO May not be necessary.
         let node = Some(node.into_not_null());
 
         unsafe {
@@ -158,18 +154,17 @@ impl <T> Lrc<T> {
         self.head = node;
     }
 
+    /// Gets the count of the head element
     fn get_count_head(&self) -> usize {
-        unsafe {
-            self.head.as_ref().unwrap().as_ref().get_count()
-        }
+        self.get_ref_head_node().get_count()
     }
 
     // O(n) operation to determine how long the list is.
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         let mut count = 1;
 
         unsafe {
-            let mut node = self.head.as_ref().unwrap().as_ref();
+            let mut node = self.get_ref_head_node();
 
             while let Some(next_node) = node.next.as_ref() {
                 count += 1;
@@ -179,39 +174,37 @@ impl <T> Lrc<T> {
         count
     }
 
+    /// Gets a mutable reference to the head node.
     fn get_mut_head_node(&mut self) -> &mut Node<T> {
         unsafe {
             self.head.as_mut().unwrap().as_mut()
         }
     }
 
+    /// Gets a reference to the head node.
     fn get_ref_head_node(&self) -> &Node<T> {
         unsafe {
             self.head.as_ref().unwrap().as_ref()
         }
     }
 
-
 }
 
 impl <T: Clone> Lrc<T> {
-    fn make_mut(&mut self) -> &mut T {
+    pub fn make_mut(&mut self) -> &mut T {
         // Use this to smuggle the copy past the borrow checker.
         if self.get_count_head() > 1 {
             // Clone to ensure unique ownership
-            unsafe {
-                let cloned_element = self.head.as_ref().unwrap().as_ref().element.clone();
-                self.push_head(Node::new(cloned_element))
-            }
+            let cloned_element = self.get_ref_head_node().element.clone();
+            self.push_head(Node::new(cloned_element))
         }
-        unsafe {
-            &mut self.head.as_mut().unwrap().as_mut().element
-        }
+        &mut self.get_mut_head_node().element
     }
 }
 
 impl <T> Drop for Lrc<T> {
     fn drop(&mut self) {
+        // TODO refactor this to avoid the unsafe block
         if let Some(mut head) = self.head {
             unsafe {
 
@@ -242,8 +235,8 @@ impl <T> Clone for Lrc<T> {
 
 impl <T: PartialEq> PartialEq for Lrc<T> {
     fn eq(&self, other: &Self) -> bool {
+        // TODO refactor this to remove the unsafe block.
         unsafe{
-            println!("Eq called");
             match (self.head, other.head) {
                 (Some(lhs), Some(rhs)) => {
                     lhs.as_ref().eq(rhs.as_ref())
@@ -256,9 +249,7 @@ impl <T: PartialEq> PartialEq for Lrc<T> {
 
 impl <T> AsRef<T> for Lrc<T> {
     fn as_ref(&self) -> &T {
-        unsafe{
-            &self.head.as_ref().unwrap().as_ref().element
-        }
+        &self.get_ref_head_node().element
     }
 }
 
@@ -266,9 +257,7 @@ impl <T> Deref for Lrc<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        unsafe{
-            &self.head.as_ref().unwrap().as_ref().element
-        }
+        &self.get_ref_head_node().element
     }
 }
 
@@ -312,11 +301,38 @@ mod test {
     }
 
     #[test]
-    fn len_2() {
+    fn pruning_removes_dead_node() {
         let mut lrc = Lrc::new(25);
         lrc.set(24);
         assert_eq!(lrc.len(), 2);
         lrc.prune_dead_nodes();
+        assert_eq!(lrc.len(), 1);
+    }
+
+    #[test]
+    fn pruning_does_not_remove_alive_node() {
+        let mut lrc = Lrc::new(25);
+        let _lrc_copy = lrc.clone();
+        lrc.set(24);
+        assert_eq!(lrc.len(), 2);
+        lrc.prune_dead_nodes();
+        assert_eq!(lrc.len(), 2);
+    }
+
+
+    #[test]
+    fn pruning_required_after_cloned_drop() {
+        let mut lrc = Lrc::new(25);
+        let lrc_copy = lrc.clone();
+        lrc.set(24);
+        assert_eq!(lrc.len(), 2);
+        lrc.prune_dead_nodes();
+        assert_eq!(lrc.len(), 2);
+
+        std::mem::drop(lrc_copy);
+        assert_eq!(lrc.len(), 2);
+
+        lrc.prune_dead_nodes(); // Pruning has to be done manually after Lrc copies are dropped.
         assert_eq!(lrc.len(), 1);
     }
 
