@@ -1,3 +1,5 @@
+//! A Reference Counted Pointer optimized for use with Yew.
+
 use std::ptr::NonNull;
 use std::cell::Cell;
 use std::fmt;
