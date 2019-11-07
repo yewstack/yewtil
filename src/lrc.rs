@@ -52,8 +52,9 @@ struct Node<T> {
     /// Ptr to previous node
     prev: Option<NonNull<Node<T>>>,
     /// The value at this node
-    element: Takeable<T>,
+    value: Takeable<T>,
     /// The reference count.
+    /// **It keeps track of how many LRCs have this node as their heads**
     count: Cell<usize>,
     /// Ptr to next node.
     next: Option<NonNull<Node<T>>>,
@@ -61,10 +62,10 @@ struct Node<T> {
 
 impl<T> Node<T> {
     /// Creates a new node
-    fn new(element: T) -> Self {
+    fn new(value: T) -> Self {
         Node {
             prev: None,
-            element: Takeable::new(element),
+            value: Takeable::new(value),
             count: Cell::new(1),
             next: None,
         }
@@ -119,6 +120,15 @@ unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<Node<T>>) {
     }
 }
 
+
+// TODO: missing methods
+// link_next - Join another Lrc as a next node. Both nodes must be terminating on the respective ends that are being linked.
+// link_prev - Join another Lrc as a prev node. Both nodes must be terminating on the respective ends that are being linked.
+// into_raw - same as RC
+// from_raw - same as RC
+
+
+
 /// Linked List Reference Counted Pointer
 ///
 /// A doubly linked list where the head node is used as the value of the pointer.
@@ -135,11 +145,11 @@ unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<Node<T>>) {
 ///
 /// # Comparison
 ///
-/// |      | Clone copies the | Reference Counted | Mutation                                         | Data of Cloned Smart Pointers |
-/// |------|------------------|-------------------|--------------------------------------------------|-------------------------------|
-/// | Lrc  | Pointer          | Yes               | Allocate a linked copy of data, or edit in place | Can differ                    |
-/// | Rc   | Pointer          | Yes               | Allocate a copy of data, or edit in place        | Always identical              |
-/// | Box  | Data             | No                | Edit in place                                    | Can differ                    |
+/// |        | Clone copies the | Reference Counted | Mutation                                         | Data of Cloned Smart Pointers |
+/// |--------|------------------|-------------------|--------------------------------------------------|-------------------------------|
+/// | `Lrc`  | Pointer          | Yes               | Allocate a linked copy of data, or edit in place | Can differ                    |
+/// | `Rc`   | Pointer          | Yes               | Allocate a copy of data, or edit in place        | Always identical              |
+/// | `Box`  | Data             | No                | Edit in place                                    | Can differ                    |
 ///
 /// # Example
 /// ```
@@ -179,9 +189,9 @@ pub struct Lrc<T> {
 
 #[allow(clippy::len_without_is_empty)] // If it is empty, the Lrc is destroyed, therefore is_empty is useless
 impl<T> Lrc<T> {
-    /// Allocates the element on the heap next to a reference counter and next and previous pointers.
-    pub fn new(element: T) -> Self {
-        let node = Node::new(element);
+    /// Allocates the value on the heap next to a reference counter and next and previous pointers.
+    pub fn new(value: T) -> Self {
+        let node = Node::new(value);
         Lrc {
             head: Some(node.into_not_null()),
         }
@@ -196,7 +206,6 @@ impl<T> Lrc<T> {
     /// the new value. Unless the Lrc is cloned, or another Lrc updates to have this value, it will have
     /// exclusive access over this node, and calling set will remain cheap.
     ///
-
     ///
     /// # Example
     /// ```
@@ -205,13 +214,13 @@ impl<T> Lrc<T> {
     /// lrc.set(1);
     /// assert_eq!(lrc.as_ref(), &1);
     /// ```
-    pub fn set(&mut self, element: T) {
+    pub fn set(&mut self, value: T) {
         if self.is_exclusive() {
-            // Directly assign the element if the ptr has exclusive access.
-            *self.get_mut_head_node().element.as_mut() = element;
+            // Directly assign the value if the ptr has exclusive access.
+            *self.get_mut_head_node().value.as_mut() = value;
         } else {
             // If the ptr is shared, allocate a new node.
-            self.push_head(Node::new(element));
+            self.push_head(Node::new(value));
         }
     }
 
@@ -234,7 +243,7 @@ impl<T> Lrc<T> {
         if self.is_exclusive() {
             let node = self.get_mut_head_node();
             // Only this node has ownership, or it is marked dead.
-            Some(node.element.as_mut())
+            Some(node.value.as_mut())
         } else {
             None
         }
@@ -258,7 +267,7 @@ impl<T> Lrc<T> {
         if self.is_exclusive() {
             let head: NonNull<Node<T>> = self.head.unwrap();
             unsafe {
-                let element = (*head.as_ptr()).element.take();
+                let value = (*head.as_ptr()).value.take();
 
                 if let Some(prev) = (*head.as_ptr()).prev.as_mut() {
                     prev.as_mut().next = (*head.as_ptr()).next.take();
@@ -271,7 +280,7 @@ impl<T> Lrc<T> {
                 // No need to decrement the count, it already is 1
                 std::ptr::drop_in_place(head.as_ptr());
 
-                Ok(element)
+                Ok(value)
             }
         } else {
             Err(self)
@@ -349,7 +358,7 @@ impl<T> Lrc<T> {
             if let Some(next) = next {
                 decrement_and_possibly_deallocate(*head_node);
 
-                // Increment the count, because a new Lrc has this node as the head
+                // Increment the count, because the Lrc now has this node as its head
                 next.as_ref().inc_count();
                 self.head = Some(next);
 
@@ -540,20 +549,20 @@ impl<T: Clone> Lrc<T> {
     pub fn make_mut(&mut self) -> &mut T {
         if !self.is_exclusive() {
             // Clone to ensure unique ownership
-            let mut cloned_element: Takeable<T> = self.get_ref_head_node().element.clone();
-            self.push_head(Node::new(cloned_element.take()))
+            let mut cloned_value: Takeable<T> = self.get_ref_head_node().value.clone();
+            self.push_head(Node::new(cloned_value.take()))
         }
-        self.get_mut_head_node().element.as_mut()
+        self.get_mut_head_node().value.as_mut()
     }
 
-    /// Consumes this Lrc, yeilding its wrapped item.
+    /// Consumes this Lrc, returning its wrapped value.
     ///
-    /// If this Lrc doesn't have exclusive access, it will clone the element.
+    /// If this Lrc doesn't have exclusive access, it will clone the value.
     pub fn clone_unwrap(self) -> T {
         if self.is_exclusive() {
             let head: NonNull<Node<T>> = self.head.unwrap();
             unsafe {
-                let element = (*head.as_ptr()).element.take();
+                let value = (*head.as_ptr()).value.take();
 
                 if let Some(prev) = (*head.as_ptr()).prev.as_mut() {
                     prev.as_mut().next = (*head.as_ptr()).next.take();
@@ -566,25 +575,25 @@ impl<T: Clone> Lrc<T> {
                 // No need to decrement the count, it already is 1
                 std::ptr::drop_in_place(head.as_ptr());
 
-                element
+                value
             }
         } else {
-           self.get_ref_head_node().element.as_ref().clone()
+           self.get_ref_head_node().value.as_ref().clone()
         }
     }
 }
 
 impl<T: PartialEq> Lrc<T> {
-    /// Only sets if the new element is different than the current element.
+    /// Only sets if the new value is different than the current value.
     ///
     /// It will return true if they were not equal, indicating that an assignment has occurred.
     ///
     /// This is better than `lrc.make_mut().neq_assign(value)` because this will
     /// not allocate a copy if the current value if the current value and the new value don't match,
     /// while `make_mut()` will do that up front, before the equality check.
-    pub fn neq_set(&mut self, element: T) -> bool {
-        if self.get_ref_head_node().element.as_ref() != &element {
-            self.set(element);
+    pub fn neq_set(&mut self, value: T) -> bool {
+        if self.get_ref_head_node().value.as_ref() != &value {
+            self.set(value);
             true
         } else {
             false
@@ -616,7 +625,7 @@ impl<T: PartialEq> PartialEq for Lrc<T> {
         // TODO refactor this to remove the unsafe block.
         unsafe {
             match (self.head, other.head) {
-                (Some(lhs), Some(rhs)) => lhs.as_ref().element.eq(&rhs.as_ref().element),
+                (Some(lhs), Some(rhs)) => lhs.as_ref().value.eq(&rhs.as_ref().value),
                 _ => false,
             }
         }
@@ -628,27 +637,27 @@ impl<T: Eq> Eq for Lrc<T> {}
 impl<T: PartialOrd> PartialOrd for Lrc<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.get_ref_head_node()
-            .element
-            .partial_cmp(&other.get_ref_head_node().element)
+            .value
+            .partial_cmp(&other.get_ref_head_node().value)
     }
 }
 impl<T: Ord> Ord for Lrc<T> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.get_ref_head_node()
-            .element
-            .cmp(&other.get_ref_head_node().element)
+            .value
+            .cmp(&other.get_ref_head_node().value)
     }
 }
 
 impl<T: Hash> Hash for Lrc<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.get_ref_head_node().element.hash(state)
+        self.get_ref_head_node().value.hash(state)
     }
 }
 
 impl<T> AsRef<T> for Lrc<T> {
     fn as_ref(&self) -> &T {
-        &self.get_ref_head_node().element.as_ref()
+        &self.get_ref_head_node().value.as_ref()
     }
 }
 
@@ -656,13 +665,13 @@ impl<T> Deref for Lrc<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &self.get_ref_head_node().element.as_ref()
+        &self.get_ref_head_node().value.as_ref()
     }
 }
 
 impl<T> Borrow<T> for Lrc<T> {
     fn borrow(&self) -> &T {
-        &self.get_ref_head_node().element.as_ref()
+        &self.get_ref_head_node().value.as_ref()
     }
 }
 
@@ -778,7 +787,7 @@ mod test {
         lrc.set(1);
 
         assert_eq!(lrc.get_ref_head_node().prev, None);
-        assert_eq!(lrc.get_ref_head_node().element.as_ref(), &1);
+        assert_eq!(lrc.get_ref_head_node().value.as_ref(), &1);
         assert_eq!(lrc.get_ref_head_node().count, Cell::new(1));
         assert!(
             lrc.get_ref_head_node().next.is_some(),
@@ -798,7 +807,7 @@ mod test {
                 .expect("next.prev should be some")
                 .as_ref();
 
-            assert_eq!(lrcs_next.element.as_ref(), &0);
+            assert_eq!(lrcs_next.value.as_ref(), &0);
             assert_eq!(
                 lrcs_next.count,
                 Cell::new(1),
@@ -818,7 +827,7 @@ mod test {
         assert_eq!(lrc.len(), 2);
 
         assert_eq!(cloned_lrc.get_ref_head_node().prev, None);
-        assert_eq!(cloned_lrc.get_ref_head_node().element.as_ref(), &1);
+        assert_eq!(cloned_lrc.get_ref_head_node().value.as_ref(), &1);
         assert_eq!(cloned_lrc.get_ref_head_node().count, Cell::new(2));
         assert!(
             cloned_lrc.get_ref_head_node().next.is_some(),
@@ -830,7 +839,7 @@ mod test {
 
         assert_eq!(lrc.get_ref_head_node().prev, None);
         assert_eq!(
-            lrc.get_ref_head_node().element.as_ref(),
+            lrc.get_ref_head_node().value.as_ref(),
             &2,
             "value should now be updated to 2"
         );
@@ -871,7 +880,7 @@ mod test {
                 .as_ref()
                 .expect("Should have next node")
                 .as_ref();
-            assert_eq!(lrcs_next.element.as_ref(), &0);
+            assert_eq!(lrcs_next.value.as_ref(), &0);
         }
     }
 
