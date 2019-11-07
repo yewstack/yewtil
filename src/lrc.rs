@@ -47,6 +47,7 @@ impl<T: fmt::Debug> fmt::Debug for Takeable<T> {
     }
 }
 
+// TODO consider renaming prev and next to new and old respectively.
 #[derive(PartialEq, Debug)]
 struct Node<T> {
     /// Ptr to previous node
@@ -442,36 +443,34 @@ impl<T> Lrc<T> {
         lhs.head.unwrap().eq(&rhs.head.unwrap())
     }
 
-    // TODO this is subtly wrong.
-    // This guarantees that the new node will be the new head for _this_ Lrc, but the absolute list
-    // may still retain its own head.
-    // This subtly breaks the navigability of the Lrc's pointers, as it may orphan a chain when traversing it one way.
-
-    // The way to fix this would be to decrement the count of the head node here,
-    // then navigate up the prev chain as far as it can go,
-    // do a ptr equality check, and if they are different, decrement again (which would happen after having incremented it).
-    // Then make the new node point to this, and this point to the new node.
-    // Then assign the new node to the head.
-
     /// Push a new node to the head of the `Lrc`.
+    ///
+    /// This guarantees that the new node will be pushed to head,
+    /// and that the old **most previous (newest)** node will be attached to the new
+    /// head's next ptr.
+    ///
+    /// This means that for any `Lrc`, navigating to prev nodes
+    /// (`Lrc::update`, `Lrc::advance_back`, `<Lrc as DoubleEndedIterator>::next_back`)
+    /// will eventually terminate at the new head of _this_ `Lrc`.
     fn push_head(&mut self, mut node: Node<T>) {
-        debug_assert_eq!(node.prev, None); // TODO, not sure about this check, it really isn't a guarantee that needs to be upheld.
+        // Make the head point to the absolutely newest node in the list.
+        self.update();
 
+        // Assign make the new node's next ptr point to the current head.
         node.next = self.head;
         let node = Some(node.into_not_null());
 
         let head = self.head.unwrap();
         unsafe {
-
-            debug_assert!(head.as_ref().get_count() > 1, "If the ref_count is 1, then the value should be mutated instead of pushing a new node.");
+            // Connect the head to the new node.
             (*head.as_ptr()).prev = node;
-            // Decrement the count when a node is moved away from the head position.
-            // Because the rec-count is > 1, then this operation will never indicate that
-            // the node should be dropped, as it is not capable of reaching 0.
-            (*head.as_ptr()).dec_count();
+            decrement_and_possibly_deallocate(head)
         }
 
+        // Make the new node the head for this Lrc.
         self.head = node;
+        // Other nodes will still point to the same heads as they did before,
+        // but now calling `update` will cause them to navigate to the same head as this Lrc
     }
 
     /// Gets the reference count of the head node.
