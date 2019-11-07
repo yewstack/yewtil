@@ -455,22 +455,20 @@ impl<T> Lrc<T> {
 
     /// Push a new node to the head of the `Lrc`.
     fn push_head(&mut self, mut node: Node<T>) {
-        debug_assert_eq!(node.prev, None);
+        debug_assert_eq!(node.prev, None); // TODO, not sure about this check, it really isn't a guarantee that needs to be upheld.
+
         node.next = self.head;
         let node = Some(node.into_not_null());
 
+        let head = self.head.unwrap();
         unsafe {
-            match self.head {
-                None => {}
-                Some(head) => {
-                    debug_assert!(head.as_ref().get_count() > 1, "If the ref_count is 1, then the value should be mutated instead of pushing a new node.");
-                    (*head.as_ptr()).prev = node;
-                    // Decrement the count when a node is moved away from the head position.
-                    // Because the rec-count is > 1, then this operation will never indicate that
-                    // the node should be dropped, as it is not capable of reaching 0.
-                    (*head.as_ptr()).dec_count();
-                }
-            }
+
+            debug_assert!(head.as_ref().get_count() > 1, "If the ref_count is 1, then the value should be mutated instead of pushing a new node.");
+            (*head.as_ptr()).prev = node;
+            // Decrement the count when a node is moved away from the head position.
+            // Because the rec-count is > 1, then this operation will never indicate that
+            // the node should be dropped, as it is not capable of reaching 0.
+            (*head.as_ptr()).dec_count();
         }
 
         self.head = node;
