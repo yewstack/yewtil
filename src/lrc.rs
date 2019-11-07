@@ -6,6 +6,7 @@ use std::hash::{Hash, Hasher};
 use std::cmp::Ordering;
 use std::ops::Deref;
 use std::ptr::NonNull;
+use std::borrow::Borrow;
 
 type IsZero = bool;
 
@@ -267,6 +268,7 @@ impl<T> Lrc<T> {
                     next.as_mut().prev = (*head.as_ptr()).prev.take();
                 }
 
+                // No need to decrement the count, it already is 1
                 std::ptr::drop_in_place(head.as_ptr());
 
                 Ok(element)
@@ -519,6 +521,33 @@ impl<T: Clone> Lrc<T> {
         }
         self.get_mut_head_node().element.as_mut()
     }
+
+    /// Consumes this Lrc, yeilding its wrapped item.
+    ///
+    /// If this Lrc doesn't have exclusive access, it will clone the element.
+    pub fn clone_unwrap(self) -> T {
+        if self.is_exclusive() {
+            let head: NonNull<Node<T>> = self.head.unwrap();
+            unsafe {
+                let element = (*head.as_ptr()).element.take();
+
+                if let Some(prev) = (*head.as_ptr()).prev.as_mut() {
+                    prev.as_mut().next = (*head.as_ptr()).next.take();
+                }
+
+                if let Some(next) = (*head.as_ptr()).next.as_mut() {
+                    next.as_mut().prev = (*head.as_ptr()).prev.take();
+                }
+
+                // No need to decrement the count, it already is 1
+                std::ptr::drop_in_place(head.as_ptr());
+
+                element
+            }
+        } else {
+           self.get_ref_head_node().element.clone()
+        }
+    }
 }
 
 impl<T: PartialEq> Lrc<T> {
@@ -603,6 +632,12 @@ impl<T> Deref for Lrc<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
+        &self.get_ref_head_node().element.as_ref()
+    }
+}
+
+impl<T> Borrow<T> for Lrc<T> {
+    fn borrow(&self) -> &T {
         &self.get_ref_head_node().element.as_ref()
     }
 }
