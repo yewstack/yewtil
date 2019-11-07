@@ -136,11 +136,11 @@ unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<Node<T>>) {
 ///
 /// # Comparison
 ///
-/// |      | Clone copies the | Reference Counted | Mutation                                         | Cloned Smart Pointers |
-/// |------|------------------|-------------------|--------------------------------------------------|-----------------------|
-/// | Lrc  | Pointer          | Yes               | Allocate a linked copy of data, or edit in place | Can differ            |
-/// | Rc   | Pointer          | Yes               | Allocate a copy of data, or edit in place        | Always identical      |
-/// | Box  | Data             | No                | Edit in place                                    | Can differ            |
+/// |      | Clone copies the | Reference Counted | Mutation                                         | Data of Cloned Smart Pointers |
+/// |------|------------------|-------------------|--------------------------------------------------|-------------------------------|
+/// | Lrc  | Pointer          | Yes               | Allocate a linked copy of data, or edit in place | Can differ                    |
+/// | Rc   | Pointer          | Yes               | Allocate a copy of data, or edit in place        | Always identical              |
+/// | Box  | Data             | No                | Edit in place                                    | Can differ                    |
 ///
 /// # Example
 /// ```
@@ -299,6 +299,12 @@ impl <T> Lrc<T> {
     /// If this Lrc is shared, and one or more of its shared Lrcs has been modified,
     /// this will update this lrc to have the most up-to-date value (held currently by one of its clones).
     ///
+    /// # Note
+    /// This method constitutes an example of [action at a distance](https://en.wikipedia.org/wiki/Action_at_a_distance_(computer_programming)),
+    /// as it may not be obvious what value you are setting your Lrc to when you call this.
+    /// While useful, be wary to not overuse this mechanism, as it can make control-flow difficult to follow.
+    ///
+    ///
     /// # Example
     /// ```
     ///# use yewtil::lrc::Lrc;
@@ -320,6 +326,16 @@ impl <T> Lrc<T> {
     /// Advances to the next node. The next node will be a node older than the current one.
     ///
     /// The returned boolean indicates if the attempt to advance to a new position was successful.
+    ///
+    /// Because advancing decrements the reference count as you move this Lrc`s head away from a node,
+    /// if there are no other Lrcs with their heads pointing at that node, than that node will be deallocated.
+    /// If you want an operation that advances to the next node, but doesn't risk deallocating the current node,
+    /// try `next` instead, which returns a new Lrc instead of mutating one.
+    ///
+    /// # Note
+    /// This method constitutes an example of [action at a distance](https://en.wikipedia.org/wiki/Action_at_a_distance_(computer_programming)),
+    /// as it may not be obvious what value you are setting your Lrc to when you call this.
+    /// While useful, be wary to not overuse this mechanism, as it can make control-flow difficult to follow.
     ///
     /// # Example
     /// ```
@@ -352,6 +368,17 @@ impl <T> Lrc<T> {
     /// Advances to the previous node. The previous node will be a node newer than the current one.
     ///
     /// The returned boolean indicates if the attempt to advance to a new position was successful.
+    ///
+    /// Because advancing decrements the reference count as you move this Lrc`s head away from a node,
+    /// if there are no other Lrcs with their heads pointing at that node, than that node will be deallocated.
+    /// If you want an operation that advances to the next node, but doesn't risk deallocating the current node,
+    /// try `next_back` instead, which returns a new Lrc instead of mutating one.
+    ///
+    /// # Note
+    /// This method constitutes an example of [action at a distance](https://en.wikipedia.org/wiki/Action_at_a_distance_(computer_programming)),
+    /// as it may not be obvious what value you are setting your Lrc to when you call this.
+    /// While useful, be wary to not overuse this mechanism, as it can make control-flow difficult to follow.
+    ///
     /// # Example
     /// ```
     ///# use yewtil::lrc::Lrc;
@@ -407,16 +434,12 @@ impl <T> Lrc<T> {
             match self.head {
                 None => {}
                 Some(head) => {
+                    debug_assert!(head.as_ref().get_count() >= 2, "If the ref_count is 1, then the value should be mutated instead of pushing a new node.");
                     (*head.as_ptr()).prev = node;
                     // Decrement the count when a node is moved away from the head position.
-                    // Unless it is owned by a cloned lrc, this will mark it as dead, and it will be pruned
-                    // the next time `prune_dead_nodes` is run.
-                    if (*head.as_ptr()).dec_count() {
-                        // TODO remove this dead code if no one ever manages to trigger it.
-                        debug_assert!(false, "This code should be dead, due to a condition in set that prevents push_head from being called when the count == 1");
-                        // This is what should happen anyways, but reaching this instruction should be impossible.
-                        std::ptr::drop_in_place(head.as_ptr());
-                    }
+                    // Because the rec-count is >=2, then this operation will never indicate that
+                    // the node should be dropped, as it will never reach 0.
+                    (*head.as_ptr()).dec_count();
                 },
             }
         }
@@ -514,6 +537,35 @@ impl <T: Clone> Lrc<T> {
             self.push_head(Node::new(cloned_element.take()))
         }
         self.get_mut_head_node().element.as_mut()
+    }
+}
+
+impl <T: PartialEq> Lrc<T> {
+    /// Only sets if the new element is different than the current element.
+    ///
+    /// It will return true if they were not equal, indicating that an assignment has occurred.
+    pub fn neq_set(&mut self, element: T) -> bool {
+        if self. get_ref_head_node().element.as_ref() != &element {
+            self.set(element);
+            true
+        } else {
+            false
+        }
+    }
+
+
+    /// Only alters the value if the new element produced by the Fn is different than the current one.
+    ///
+    /// It will return true if they were not equal, indicating that an assignment has occurred.
+    pub fn neq_alter<F: Fn(&T) -> T>(&mut self, f: F) -> bool {
+        let current_head_value = &self.get_ref_head_node().element;
+        let new_head_value = f(current_head_value.as_ref());
+        if self. get_ref_head_node().element.as_ref() != &new_head_value {
+            self.set(new_head_value);
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -788,12 +840,42 @@ mod test {
 
 
     #[test]
+    fn advance_back() {
+        let mut lrc = Lrc::new(0);
+        let mut clone = lrc.clone();
+        lrc.set(1);
+        // Move to a newer value
+        let did_advance = clone.advance_back();
+
+        assert!(did_advance);
+        assert_eq!(clone.as_ref(), &1);
+        assert_eq!(clone.len(), 1);
+        assert_eq!(clone.get_count(), 2);
+
+        let did_advance = clone.advance_back();
+        assert!(!did_advance, "No newer values to advance to.");
+
+        let did_advance = clone.advance_next();
+        assert!(!did_advance, "can't restore old value, as it has be dropped.");
+    }
+
+    #[test]
     fn advance_next() {
         let mut lrc = Lrc::new(0);
         let mut clone = lrc.clone();
         lrc.set(1);
-        clone.advance_back();
+        // Move to the older value.
+        let did_advance = lrc.advance_next();
 
-        assert_eq!(clone.as_ref(), &1);
+        assert!(did_advance);
+        assert_eq!(lrc.as_ref(), &0);
+        assert_eq!(lrc.len(), 1);
+        assert_eq!(lrc.get_count(), 2);
+
+        let did_advance = clone.advance_next();
+        assert!(!did_advance, "No older values to advance to.");
+
+        let did_advance = clone.advance_back();
+        assert!(!did_advance, "Can't restore old value, as it has be dropped.");
     }
 }
