@@ -16,7 +16,7 @@ type IsZero = bool;
 /// It is expected to only take items from this structure in a way that
 /// it will never be accessed after items have been taken.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct Takeable<T>(Option<T>);
+struct Takeable<T>(Option<T>); // TODO, consider using MaybeUninit instead of option here. it will save a word's worth of space, but making sure that the drops get called will become hairy
 
 impl<T> Takeable<T> {
     fn new(item: T) -> Self {
@@ -124,6 +124,7 @@ unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<Node<T>>) {
 // TODO: missing methods
 // link_next - Join another Lrc as a next node. Both nodes must be terminating on the respective ends that are being linked.
 // link_prev - Join another Lrc as a prev node. Both nodes must be terminating on the respective ends that are being linked.
+// unlink_next, unlink_prev - Unlinks the lrc from other linked lrcs.
 // into_raw - same as RC
 // from_raw - same as RC
 
@@ -131,17 +132,17 @@ unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<Node<T>>) {
 
 /// Linked List Reference Counted Pointer
 ///
-/// A doubly linked list where the head node is used as the value of the pointer.
+/// A doubly linked list where the head node is used to represent the value contained by the pointer.
 /// The remaining nodes represent shared pointers whose values have changed.
-/// A Lrc pointer can swap its value to the newest modification along the chain.
+/// A `Lrc` pointer can swap its head node to point to the head node of another `Lrc` that it
+/// is linked to.
 ///
-/// The LRC allows cheap cloning like an `Rc` pointer.
-/// Like `Rc`, `Lrc` will need to allocate a new copy when mutating a instance that has been shared.
-/// But the newly allocated memory will also point to the old data, and the `Lrc` holding a reference
-/// to the old data can choose to update itself to point to the newest data in its "lineage".
-///
-/// In fact any `Lrc` can navigate itself to point to any data also held by a live `Lrc` that
-/// it has been cloned from or has been cloned from it.
+/// The `Lrc` allows cheap cloning like an `Rc` pointer.
+/// Like `Rc`, `Lrc` will need to allocate a new copy when mutating an instance that has been shared.
+/// Unlike `Rc`, the newly allocated node will also have a pointer to the old node because another `Lrc` still exists that
+/// has that node as its head.
+/// Either `Lrc` is free to walk its head along this linked list, allowing it to update itself
+/// to newer or older still-live nodes.
 ///
 /// # Comparison
 ///
@@ -150,6 +151,18 @@ unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<Node<T>>) {
 /// | `Lrc`  | Pointer          | Yes               | Allocate a linked copy of data, or edit in place | Can differ                    |
 /// | `Rc`   | Pointer          | Yes               | Allocate a copy of data, or edit in place        | Always identical              |
 /// | `Box`  | Data             | No                | Edit in place                                    | Can differ                    |
+///
+/// `Lrc` functions similarly to `Rc`, but has a small size and performance overhead due to dealing with
+/// forward and back pointers, in addition to the reference counters they both have.
+/// `Lrc` should be slightly easier to use than `Rc` for `Yew` related tasks,
+/// and also gains the ability to perform "action at a distance" operations with `update`,
+/// `advance_next`, and `advance_prev`.
+///
+/// # Terminology
+/// * `Lrc` - Linked \[List\] Reference Counted Pointer.
+/// * Node - A link that holds data, a reference counter, and prev and next pointers to other nodes.
+/// * Head - The node held by a `Lrc`. The head holds the value that represents the `Lrc`,
+/// even though the `Lrc`'s connected nodes may contain many other values.
 ///
 /// # Example
 /// ```
@@ -189,7 +202,9 @@ pub struct Lrc<T> {
 
 #[allow(clippy::len_without_is_empty)] // If it is empty, the Lrc is destroyed, therefore is_empty is useless
 impl<T> Lrc<T> {
-    /// Allocates the value on the heap next to a reference counter and next and previous pointers.
+    /// Creates a new `Lrc`.
+    ///
+    /// This is done by allocating the `Lrc` on the heap next to a reference counter and next and previous pointers.
     pub fn new(value: T) -> Self {
         let node = Node::new(value);
         Lrc {
@@ -197,15 +212,14 @@ impl<T> Lrc<T> {
         }
     }
 
-    /// Sets a new value as the head, pushing the previous head to the second node in the list.
+    /// Sets a new value as the head, making the previous head to the second node in the list.
     ///
-    /// This will not allocate if this Lrc has exclusive access to the node whose value is being set.
+    /// This will not allocate if this `Lrc` has exclusive access to the node whose value is being set.
     /// It will update the head nodes value in that case.
     ///
-    /// If the Lrc's head is shared with another Lrc, it will push a new node onto its head containing
-    /// the new value. Unless the Lrc is cloned, or another Lrc updates to have this value, it will have
-    /// exclusive access over this node, and calling set will remain cheap.
-    ///
+    /// If the Lrc's head is shared with another `Lrc`, it will push a new node onto its head containing
+    /// the new value. Unless the `Lrc` is cloned, or another Lrc updates to point to this node, it will have
+    /// exclusive access over this node, and calling `set` will remain cheap.
     ///
     /// # Example
     /// ```
@@ -224,7 +238,7 @@ impl<T> Lrc<T> {
         }
     }
 
-    /// Gets a mutable reference to the owned value if this Lrc has exclusive ownership over its data.
+    /// Gets a mutable reference to the owned value if this `Lrc` has exclusive ownership over its data.
     ///
     /// # Example
     /// ```
@@ -249,9 +263,9 @@ impl<T> Lrc<T> {
         }
     }
 
-    /// Tries to get the value at the head of this Lrc.
+    /// Tries to get the value at the head of this `Lrc`.
     /// If it has exclusive access, then it will return the value.
-    /// If it does not have exclusive access, then the whole Lrc will be returned as the Error.
+    /// If it does not have exclusive access, then the whole `Lrc` will be returned as the Error.
     ///
     /// # Example
     /// ```
@@ -288,22 +302,24 @@ impl<T> Lrc<T> {
     }
 
 
-    /// Indicates that the Lrc has linked nodes that are newer than its head.
+    /// Indicates that the `Lrc` has linked nodes that are newer than its head.
     pub fn has_prev(&self) -> bool {
         self.get_ref_head_node().prev.is_some()
     }
 
-    /// Indicates that the Lrc has linked nodes that are older than its head.
+    /// Indicates that the `Lrc` has linked nodes that are older than its head.
     pub fn has_next(&self) -> bool {
         self.get_ref_head_node().next.is_some()
     }
 
-    /// If this Lrc is shared, and one or more of its shared Lrcs has been modified,
-    /// this will update this lrc to have the most up-to-date value (held currently by one of its clones).
+    /// If this `Lrc` is shared, and one or more of its shared `Lrc`s has been modified,
+    /// this will update this `Lrc`'s head to have the most up-to-date node (held currently by one of its clones).
+    ///
+    /// The returned boolean will be `true` if the call did change the head pointer.
     ///
     /// # Note
     /// This method constitutes an example of [action at a distance](https://en.wikipedia.org/wiki/Action_at_a_distance_(computer_programming)),
-    /// as it may not be obvious what value you are setting your Lrc to when you call this.
+    /// as it may not be obvious what value you are setting your `Lrc` to when you call this.
     /// While useful, be wary to not overuse this mechanism, as it can make control-flow difficult to follow.
     ///
     ///
@@ -331,14 +347,14 @@ impl<T> Lrc<T> {
     ///
     /// The returned boolean indicates if the attempt to advance to a new position was successful.
     ///
-    /// Because advancing decrements the reference count as you move this Lrc`s head away from a node,
-    /// if there are no other Lrcs with their heads pointing at that node, than that node will be deallocated.
+    /// Because advancing decrements the reference count as you move this `Lrc`'s head away from a node,
+    /// if there are no other `Lrc`s with their heads pointing at that node, than that node will be deallocated.
     /// If you want an operation that advances to the next node, but doesn't risk deallocating the current node,
-    /// try `next` instead, which returns a new Lrc instead of mutating one.
+    /// try `next` instead, which returns a new `Lrc` instead of mutating one.
     ///
     /// # Note
     /// This method constitutes an example of [action at a distance](https://en.wikipedia.org/wiki/Action_at_a_distance_(computer_programming)),
-    /// as it may not be obvious what value you are setting your Lrc to when you call this.
+    /// as it may not be obvious what value you are setting your `Lrc` to when you call this.
     /// While useful, be wary to not overuse this mechanism, as it can make control-flow difficult to follow.
     ///
     /// # Example
@@ -373,14 +389,14 @@ impl<T> Lrc<T> {
     ///
     /// The returned boolean indicates if the attempt to advance to a new position was successful.
     ///
-    /// Because advancing decrements the reference count as you move this Lrc`s head away from a node,
-    /// if there are no other Lrcs with their heads pointing at that node, than that node will be deallocated.
+    /// Because advancing decrements the reference count as you move this `Lrc`'s head away from a node,
+    /// if there are no other `Lrc`s with their heads pointing at that node, than that node will be deallocated.
     /// If you want an operation that advances to the next node, but doesn't risk deallocating the current node,
-    /// try `next_back` instead, which returns a new Lrc instead of mutating one.
+    /// try `next_back` instead, which returns a new `Lrc` instead of mutating one.
     ///
     /// # Note
     /// This method constitutes an example of [action at a distance](https://en.wikipedia.org/wiki/Action_at_a_distance_(computer_programming)),
-    /// as it may not be obvious what value you are setting your Lrc to when you call this.
+    /// as it may not be obvious what value you are setting your `Lrc` to when you call this.
     /// While useful, be wary to not overuse this mechanism, as it can make control-flow difficult to follow.
     ///
     /// # Example
@@ -426,9 +442,18 @@ impl<T> Lrc<T> {
         lhs.head.unwrap().eq(&rhs.head.unwrap())
     }
 
-    /// Push a new node to the head of the Lrc.
-    /// Because the head represents the active value for the Lrc,
-    /// it effectively marks the old head for deletion if it wasn't already copied.
+    // TODO this is subtly wrong.
+    // This guarantees that the new node will be the new head for _this_ Lrc, but the absolute list
+    // may still retain its own head.
+    // This subtly breaks the navigability of the Lrc's pointers, as it may orphan a chain when traversing it one way.
+
+    // The way to fix this would be to decrement the count of the head node here,
+    // then navigate up the prev chain as far as it can go,
+    // do a ptr equality check, and if they are different, decrement again (which would happen after having incremented it).
+    // Then make the new node point to this, and this point to the new node.
+    // Then assign the new node to the head.
+
+    /// Push a new node to the head of the `Lrc`.
     fn push_head(&mut self, mut node: Node<T>) {
         debug_assert_eq!(node.prev, None);
         node.next = self.head;
@@ -438,11 +463,11 @@ impl<T> Lrc<T> {
             match self.head {
                 None => {}
                 Some(head) => {
-                    debug_assert!(head.as_ref().get_count() >= 2, "If the ref_count is 1, then the value should be mutated instead of pushing a new node.");
+                    debug_assert!(head.as_ref().get_count() > 1, "If the ref_count is 1, then the value should be mutated instead of pushing a new node.");
                     (*head.as_ptr()).prev = node;
                     // Decrement the count when a node is moved away from the head position.
-                    // Because the rec-count is >=2, then this operation will never indicate that
-                    // the node should be dropped, as it will never reach 0.
+                    // Because the rec-count is > 1, then this operation will never indicate that
+                    // the node should be dropped, as it is not capable of reaching 0.
                     (*head.as_ptr()).dec_count();
                 }
             }
@@ -470,7 +495,7 @@ impl<T> Lrc<T> {
         self.get_ref_head_node().get_count()
     }
 
-    /// Returns true if no other Lrcs point to the head node.
+    /// Returns `true` if no other `Lrc`s point to the head node.
     /// ```
     ///# use yewtil::lrc::Lrc;
     /// let lrc = Lrc::new(1);
@@ -482,7 +507,11 @@ impl<T> Lrc<T> {
         self.get_count() == 1
     }
 
-    // O(n) operation to determine how long the list is.
+    /// Returns how many nodes are contained within the list this `Lrc`'s head is a part of.
+    ///
+    /// It is a `O(n)` operation, dependent on how many nodes are connected to this `Lrc`'s head.
+    /// Or put another way, how many `Lrc`s exist in the program that were cloned from this `Lrc`
+    /// (or this `Lrc` was cloned from one of them), that have differing head nodes.
     pub fn len(&self) -> usize {
         // This node, plus the length of its next nodes and its prev nodes
         1 + self.next_len() + self.prev_len()
@@ -549,8 +578,8 @@ impl<T: Clone> Lrc<T> {
     pub fn make_mut(&mut self) -> &mut T {
         if !self.is_exclusive() {
             // Clone to ensure unique ownership
-            let mut cloned_value: Takeable<T> = self.get_ref_head_node().value.clone();
-            self.push_head(Node::new(cloned_value.take()))
+            let cloned_value: T = self.clone_inner();
+            self.push_head(Node::new(cloned_value))
         }
         self.get_mut_head_node().value.as_mut()
     }
@@ -578,8 +607,13 @@ impl<T: Clone> Lrc<T> {
                 value
             }
         } else {
-           self.get_ref_head_node().value.as_ref().clone()
+            self.clone_inner()
         }
+    }
+
+    /// Clones the wrapped value at the `Lrc`'s head.
+    pub fn clone_inner(&self) -> T {
+        self.get_ref_head_node().value.as_ref().clone()
     }
 }
 
@@ -1001,5 +1035,29 @@ mod test {
             !did_advance,
             "Can't restore old value, as it has be dropped."
         );
+    }
+
+    #[test]
+    fn size_of_node_overhead() {
+        let lrc = Lrc::new(());
+        let node_size_overhead_bytes = std::mem::size_of_val(lrc.get_ref_head_node());
+        let usize_size = std::mem::size_of::<usize>();
+        assert_eq!(node_size_overhead_bytes, usize_size * 4);
+    }
+
+    #[test]
+    fn size_of_node_for_not_null() {
+        let lrc = Lrc::new(Box::new(0));
+        let node_size_overhead_bytes = std::mem::size_of_val(lrc.get_ref_head_node());
+        let usize_size = std::mem::size_of::<usize>();
+        assert_eq!(node_size_overhead_bytes, usize_size * 4);
+    }
+
+    #[test]
+    fn size_of_node_for_usize() {
+        let lrc = Lrc::new(0usize);
+        let node_size_overhead_bytes = std::mem::size_of_val(lrc.get_ref_head_node());
+        let usize_size = std::mem::size_of::<usize>();
+        assert_eq!(node_size_overhead_bytes, usize_size * 5);
     }
 }
