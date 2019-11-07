@@ -475,21 +475,32 @@ impl<T> Lrc<T> {
 
     // O(n) operation to determine how long the list is.
     pub fn len(&self) -> usize {
-        let mut count = 1;
+        // This node, plus the length of its next nodes and its prev nodes
+        1 + self.next_len() + self.prev_len()
+    }
 
+    /// Gets the number of nodes that are older than the head.
+    pub fn next_len(&self) -> usize {
+        let mut count = 0;
         unsafe {
-            // Count the nodes to the right
             let mut node = self.get_ref_head_node();
             while let Some(next_node) = node.next.as_ref() {
                 count += 1;
                 node = next_node.as_ref()
             }
+        }
+        count
+    }
 
-            // Count the nodes to the left
+
+    /// Gets the number of nodes that are newer than the head.
+    pub fn prev_len(&self) -> usize {
+        let mut count = 0;
+        unsafe {
             let mut node = self.get_ref_head_node();
-            while let Some(next_node) = node.prev.as_ref() {
+            while let Some(prev_node) = node.prev.as_ref() {
                 count += 1;
-                node = next_node.as_ref()
+                node = prev_node.as_ref()
             }
         }
         count
