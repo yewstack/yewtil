@@ -99,20 +99,81 @@ impl <T> Node<T> {
     }
 }
 
-/// Linked Reference Counted pointer
+/// Decrement the ref count of a node, and deallocate the node if the ref-count reaches 0.
 ///
-/// A doubly linked list where the head represents the value presented to the world via
-/// as_ref, or get_mut(), or make_mut().
-/// The remaining elements represent shared pointers whose values have changed.
+/// Deallocating involves attaching the node's prev's next to the node's next ptr,
+/// and attaching the node's next's prev to the node's prev ptr.
+/// This connects the nodes surrounding the pointer with each other.
+unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<Node<T>>) {
+    // If the heads ref-count is 0
+    if node.as_ref().dec_count() {
+        // Attach surrounding nodes to each other as this one is removed.
+        (*node.as_ptr()).prev.as_mut().map(|prev| {
+            prev.as_mut().next = (*node.as_ptr()).next.take();
+        });
+
+        (*node.as_ptr()).next.as_mut().map(|next| {
+            next.as_mut().prev = (*node.as_ptr()).prev.take();
+        });
+
+        std::ptr::drop_in_place(node.as_ptr());
+    }
+}
+
+/// Linked List Reference Counted Pointer
+///
+/// A doubly linked list where the head node is used as the value of the pointer.
+/// The remaining nodes represent shared pointers whose values have changed.
 /// A Lrc pointer can swap its value to the newest modification along the chain.
 ///
-/// The LRC allows cheap cloning like an `Rc` pointer,
-/// but mutating the value when it is shared will cause a new element to be allocated in its place.
-/// This new node can access the previous ones, as long as the other Lrcs still exist.
+/// The LRC allows cheap cloning like an `Rc` pointer.
+/// Like `Rc`, `Lrc` will need to allocate a new copy when mutating a instance that has been shared.
+/// But the newly allocated memory will also point to the old data, and the `Lrc` holding a reference
+/// to the old data can choose to update itself to point to the newest data in its "lineage".
 ///
-/// So from a given Lrc, you can see how many copies of the value you have,
-/// as well as how many modified copies exist, and what their values are by iterating over Lrc,
-/// as it implements the `Iterator` trait.
+/// In fact any `Lrc` can navigate itself to point to any data also held by a live `Lrc` that
+/// it has been cloned from or has been cloned from it.
+///
+/// # Comparison
+///
+/// |      | Clone copies the | Reference Counted | Mutation                                         | Cloned Smart Pointers |
+/// |------|------------------|-------------------|--------------------------------------------------|-----------------------|
+/// | Lrc  | Pointer          | Yes               | Allocate a linked copy of data, or edit in place | Can differ            |
+/// | Rc   | Pointer          | Yes               | Allocate a copy of data, or edit in place        | Always identical      |
+/// | Box  | Data             | No                | Edit in place                                    | Can differ            |
+///
+/// # Example
+/// ```
+/// use yewtil::lrc::Lrc;
+/// let mut lrc = Lrc::new("Some String".to_string());
+///
+/// let mut clone = lrc.clone();
+///
+/// assert!(Lrc::ptr_eq(&lrc, &clone));
+/// assert_eq!(lrc.get_count(), 2);
+/// assert_eq!(lrc.len(), 1);
+///
+/// lrc.set("Some new String".to_string());
+///
+/// assert_eq!(lrc.as_ref(), "Some new String");
+/// assert_eq!(clone.as_ref(), "Some String");
+/// assert!(!Lrc::ptr_eq(&lrc, &clone));
+/// assert_eq!(lrc.get_count(), 1);
+/// assert_eq!(lrc.len(), 2);
+///
+/// clone.update();
+///
+/// assert_eq!(lrc.as_ref(), "Some new String");
+/// assert_eq!(clone.as_ref(), "Some new String");
+/// assert!(Lrc::ptr_eq(&lrc, &clone));
+/// assert_eq!(lrc.get_count(), 2);
+/// assert_eq!(lrc.len(), 1);
+///
+/// std::mem::drop(clone);
+///
+/// assert_eq!(lrc.get_count(), 1);
+/// assert_eq!(lrc.len(), 1);
+/// ```
 pub struct Lrc<T> {
     head: Option<NonNull<Node<T>>>
 }
@@ -136,6 +197,8 @@ impl <T> Lrc<T> {
     /// If the Lrc's head is shared with another Lrc, it will push a new node onto its head containing
     /// the new value. Unless the Lrc is cloned, or another Lrc updates to have this value, it will have
     /// exclusive access over this node, and calling set will remain cheap.
+    ///
+
     ///
     /// # Example
     /// ```
@@ -253,28 +316,68 @@ impl <T> Lrc<T> {
         }
     }
 
-    /// Gets a prior value the pointer had (if any).
+    /// Advances to the next node. The next node will be a node older than the current one.
     ///
-    /// It walks down the list, replacing the head as it creates a new Lrc.
-    fn older(&self) -> Option<Self> {
-        self.get_ref_head_node().next.map(|ptr| {
-            unsafe {ptr.as_ref().inc_count();}
-            Lrc {
-                head: Some(ptr)
+    /// The returned boolean indicates if the attempt to advance to a new position was successful.
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::lrc::Lrc;
+    /// let mut lrc = Lrc::new(0);
+    /// let mut clone = lrc.clone();
+    /// lrc.set(1);
+    /// lrc.advance_next();
+    ///
+    /// assert_eq!(lrc.as_ref(), &0);
+    /// ```
+    pub fn advance_next(&mut self) -> bool {
+        unsafe {
+            let head_node: &mut NonNull<Node<T>> = self.head.as_mut().unwrap();
+            let next: Option<NonNull<Node<T>>> = (*head_node.as_ptr()).next;
+            if let Some(next) = next {
+                decrement_and_possibly_deallocate(*head_node);
+
+                // Increment the count, because a new Lrc has this item as the head
+                next.as_ref().inc_count();
+                self.head = Some(next);
+
+                true
+            } else {
+                false
             }
-        })
+        }
     }
 
-    /// Gets a newer value the pointer has had (if any).
+    /// Advances to the previous node. The previous node will be a node newer than the current one.
     ///
-    /// It walks up the list, replacing the head as it creates a new Lrc.
-    fn newer(&self) -> Option<Self> {
-        self.get_ref_head_node().prev.map(|ptr| {
-            unsafe {ptr.as_ref().inc_count();}
-            Lrc {
-                head: Some(ptr)
+    /// The returned boolean indicates if the attempt to advance to a new position was successful.
+    /// # Example
+    /// ```
+    ///# use yewtil::lrc::Lrc;
+    /// let mut lrc = Lrc::new(0);
+    /// let mut clone = lrc.clone();
+    /// lrc.set(1);
+    /// clone.advance_back();
+    ///
+    /// assert_eq!(clone.as_ref(), &1);
+    /// ```
+    pub fn advance_back(&mut self) -> bool {
+        unsafe {
+            let head_node: &mut NonNull<Node<T>> = self.head.as_mut().unwrap();
+            let prev: Option<NonNull<Node<T>>> = (*head_node.as_ptr()).prev;
+            if let Some(prev) = prev {
+                println!("{:?}", prev);
+                decrement_and_possibly_deallocate(*head_node);
+
+                // Increment the count, because a new Lrc has this item as the head
+                prev.as_ref().inc_count();
+                self.head = Some(prev);
+
+                true
+            } else {
+                false
             }
-        })
+        }
     }
 
     /// Compares head pointers for equality.
@@ -418,19 +521,7 @@ impl <T> Drop for Lrc<T> {
     fn drop(&mut self) {
         let head = self.head.expect("Head should always be present.");
         unsafe {
-            // If the heads ref-count is 0
-            if head.as_ref().dec_count() {
-                // Attach surrounding nodes to each other as this one is removed.
-                (*head.as_ptr()).prev.as_mut().map(|prev| {
-                    prev.as_mut().next = (*head.as_ptr()).next.take();
-                });
-
-                (*head.as_ptr()).next.as_mut().map(|next| {
-                    next.as_mut().prev = (*head.as_ptr()).prev.take();
-                });
-
-                std::ptr::drop_in_place(head.as_ptr());
-            }
+            decrement_and_possibly_deallocate(head);
         }
     }
 }
@@ -504,13 +595,23 @@ impl <T> Iterator for Lrc<T> {
     type Item = Lrc<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.older()
+        self.get_ref_head_node().next.map(|ptr| {
+            unsafe {ptr.as_ref().inc_count();}
+            Lrc {
+                head: Some(ptr)
+            }
+        })
     }
 }
 
 impl <T> DoubleEndedIterator for Lrc<T> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        self.newer()
+        self.get_ref_head_node().prev.map(|ptr| {
+            unsafe {ptr.as_ref().inc_count();}
+            Lrc {
+                head: Some(ptr)
+            }
+        })
     }
 }
 
@@ -613,25 +714,17 @@ mod test {
         }
     }
 
-
-//    #[test]
-//    fn set_prune() {
-//        let mut lrc = Lrc::new(25);
-//        lrc.set_and_prune(24);
-//        assert_eq!(lrc.len(), 1);
-//    }
-
     #[test]
     fn single_node_older_yeilds_none() {
-        let lrc = Lrc::new(25);
-        let older = lrc.older();
+        let mut lrc = Lrc::new(25);
+        let older = lrc.next();
         assert_eq!(older, None)
     }
 
     #[test]
     fn single_node_newer_yeilds_none() {
-        let lrc = Lrc::new(25);
-        let newer = lrc.newer();
+        let mut lrc = Lrc::new(25);
+        let newer = lrc.next_back();
         assert_eq!(newer, None)
     }
 
@@ -640,7 +733,7 @@ mod test {
         let mut lrc = Lrc::new(25);
         let _clone = lrc.clone();
         lrc.set(26);
-        let older = lrc.older();
+        let older = lrc.next();
         assert_eq!(older, Some(Lrc::new(25)))
     }
 
@@ -649,9 +742,9 @@ mod test {
         let mut lrc = Lrc::new(25);
         let _clone = lrc.clone();
         lrc.set(26);
-        let older = lrc.older();
+        let older = lrc.next();
         assert_eq!(older, Some(Lrc::new(25)));
-        let newer = older.unwrap().newer();
+        let newer = older.unwrap().next_back();
         assert_eq!(newer, Some(lrc));
     }
 
@@ -691,5 +784,16 @@ mod test {
 
         lrc.update();
         assert_eq!(lrc.as_ref(), &1);
+    }
+
+
+    #[test]
+    fn advance_next() {
+        let mut lrc = Lrc::new(0);
+        let mut clone = lrc.clone();
+        lrc.set(1);
+        clone.advance_back();
+
+        assert_eq!(clone.as_ref(), &1);
     }
 }
