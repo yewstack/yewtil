@@ -278,6 +278,17 @@ impl<T> Lrc<T> {
         }
     }
 
+
+    /// Indicates that the Lrc has linked nodes that are newer than its head.
+    pub fn has_prev(&self) -> bool {
+        self.get_ref_head_node().prev.is_some()
+    }
+
+    /// Indicates that the Lrc has linked nodes that are older than its head.
+    pub fn has_next(&self) -> bool {
+        self.get_ref_head_node().next.is_some()
+    }
+
     /// If this Lrc is shared, and one or more of its shared Lrcs has been modified,
     /// this will update this lrc to have the most up-to-date value (held currently by one of its clones).
     ///
@@ -300,7 +311,7 @@ impl<T> Lrc<T> {
     /// assert_eq!(lrc.as_ref(), &1);
     /// ```
     pub fn update(&mut self) -> bool {
-        let did_update = self.get_ref_head_node().prev.is_some();
+        let did_update = self.has_prev();
         while let Some(prev) = self.next_back() {
             *self = prev;
         }
@@ -921,7 +932,8 @@ mod test {
         assert_eq!(cloned_lrc.as_ref(), &1);
         assert_eq!(lrc.as_ref(), &0);
 
-        lrc.update();
+        let did_update = lrc.update();
+        assert!(did_update);
         assert_eq!(lrc.as_ref(), &1);
     }
 
