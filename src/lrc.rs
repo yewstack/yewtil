@@ -50,9 +50,13 @@ impl <T: fmt::Debug> fmt::Debug  for Takeable<T> {
 
 #[derive(PartialEq, Debug)]
 struct Node<T> {
+    /// Ptr to previous node
     prev: Option<NonNull<Node<T>>>,
+    /// The value at this node
     element: Takeable<T>,
+    /// The reference count.
     count: Cell<usize>,
+    /// Ptr to next node.
     next: Option<NonNull<Node<T>>>,
 }
 
@@ -178,7 +182,7 @@ pub struct Lrc<T> {
     head: Option<NonNull<Node<T>>>
 }
 
-#[allow(clippy::len_without_is_empty)]
+#[allow(clippy::len_without_is_empty)] // If it is empty, the Lrc is destroyed, therefore is_empty is useless
 impl <T> Lrc<T> {
 
     /// Allocates the element on the heap next to a reference counter and next and previous pointers.
@@ -216,21 +220,6 @@ impl <T> Lrc<T> {
             // If the ptr is shared, allocate a new node.
             self.push_head(Node::new(element));
         }
-    }
-
-    /// Set the head with a new item using a reference to the current head.
-    ///
-    /// # Example
-    /// ```
-    ///# use yewtil::lrc::Lrc;
-    /// let mut lrc = Lrc::new(0);
-    /// lrc.alter(|current| current + 1);
-    /// assert_eq!(lrc.as_ref(), &1);
-    /// ```
-    pub fn alter<F: Fn(&T) -> T>(&mut self, f: F) {
-        let current_head_value = &self.get_ref_head_node().element;
-        let new_head_value = f(current_head_value.as_ref());
-        self.set(new_head_value)
     }
 
 
@@ -483,9 +472,16 @@ impl <T> Lrc<T> {
         let mut count = 1;
 
         unsafe {
+            // Count the nodes to the right
             let mut node = self.get_ref_head_node();
-
             while let Some(next_node) = node.next.as_ref() {
+                count += 1;
+                node = next_node.as_ref()
+            }
+
+            // Count the nodes to the left
+            let mut node = self.get_ref_head_node();
+            while let Some(next_node) = node.prev.as_ref() {
                 count += 1;
                 node = next_node.as_ref()
             }
@@ -530,7 +526,6 @@ impl <T: Clone> Lrc<T> {
     /// assert_eq!(lrc.len(), 2, "This Lrc is still exclusive, so no more allocations are needed.");
     /// ```
     pub fn make_mut(&mut self) -> &mut T {
-        // Use this to smuggle the copy past the borrow checker.
         if self.get_count() > 1 {
             // Clone to ensure unique ownership
             let mut cloned_element: Takeable<T> = self.get_ref_head_node().element.clone();
@@ -540,6 +535,7 @@ impl <T: Clone> Lrc<T> {
     }
 }
 
+// TODO consider removing as lrc.make_mut().neq_assign(etc) should work just as well.
 impl <T: PartialEq> Lrc<T> {
     /// Only sets if the new element is different than the current element.
     ///
@@ -547,21 +543,6 @@ impl <T: PartialEq> Lrc<T> {
     pub fn neq_set(&mut self, element: T) -> bool {
         if self. get_ref_head_node().element.as_ref() != &element {
             self.set(element);
-            true
-        } else {
-            false
-        }
-    }
-
-
-    /// Only alters the value if the new element produced by the Fn is different than the current one.
-    ///
-    /// It will return true if they were not equal, indicating that an assignment has occurred.
-    pub fn neq_alter<F: Fn(&T) -> T>(&mut self, f: F) -> bool {
-        let current_head_value = &self.get_ref_head_node().element;
-        let new_head_value = f(current_head_value.as_ref());
-        if self. get_ref_head_node().element.as_ref() != &new_head_value {
-            self.set(new_head_value);
             true
         } else {
             false
