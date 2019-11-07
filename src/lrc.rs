@@ -337,7 +337,7 @@ impl <T> Lrc<T> {
             if let Some(next) = next {
                 decrement_and_possibly_deallocate(*head_node);
 
-                // Increment the count, because a new Lrc has this item as the head
+                // Increment the count, because a new Lrc has this node as the head
                 next.as_ref().inc_count();
                 self.head = Some(next);
 
@@ -366,10 +366,9 @@ impl <T> Lrc<T> {
             let head_node: &mut NonNull<Node<T>> = self.head.as_mut().unwrap();
             let prev: Option<NonNull<Node<T>>> = (*head_node.as_ptr()).prev;
             if let Some(prev) = prev {
-                println!("{:?}", prev);
                 decrement_and_possibly_deallocate(*head_node);
 
-                // Increment the count, because a new Lrc has this item as the head
+                // Increment the count, because a new Lrc has this node as the head
                 prev.as_ref().inc_count();
                 self.head = Some(prev);
 
