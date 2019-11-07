@@ -1,14 +1,13 @@
 //! A Reference Counted Pointer optimized for use with Yew.
 
-use std::ptr::NonNull;
 use std::cell::Cell;
 use std::fmt;
-use std::ops::Deref;
 use std::hash::{Hash, Hasher};
-use failure::_core::cmp::Ordering;
+use std::cmp::Ordering;
+use std::ops::Deref;
+use std::ptr::NonNull;
 
 type IsZero = bool;
-
 
 /// A wrapper around Option<T> that only allows items to be taken.
 ///
@@ -18,7 +17,7 @@ type IsZero = bool;
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Takeable<T>(Option<T>);
 
-impl <T> Takeable<T> {
+impl<T> Takeable<T> {
     fn new(item: T) -> Self {
         Takeable(Some(item))
     }
@@ -29,24 +28,23 @@ impl <T> Takeable<T> {
     }
 }
 
-impl <T> AsRef<T> for Takeable<T> {
+impl<T> AsRef<T> for Takeable<T> {
     fn as_ref(&self) -> &T {
         self.0.as_ref().unwrap()
     }
 }
 
-impl <T> AsMut<T> for Takeable<T> {
+impl<T> AsMut<T> for Takeable<T> {
     fn as_mut(&mut self) -> &mut T {
         self.0.as_mut().unwrap()
     }
 }
 
-impl <T: fmt::Debug> fmt::Debug  for Takeable<T> {
+impl<T: fmt::Debug> fmt::Debug for Takeable<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.as_ref().unwrap().fmt(f)
     }
 }
-
 
 #[derive(PartialEq, Debug)]
 struct Node<T> {
@@ -60,7 +58,7 @@ struct Node<T> {
     next: Option<NonNull<Node<T>>>,
 }
 
-impl <T> Node<T> {
+impl<T> Node<T> {
     /// Creates a new node
     fn new(element: T) -> Self {
         Node {
@@ -73,11 +71,7 @@ impl <T> Node<T> {
 
     /// Puts the node behind a non-null pointer.
     fn into_not_null(self) -> NonNull<Self> {
-        unsafe {
-            NonNull::new_unchecked(Box::into_raw(
-                Box::new(self)
-            ))
-        }
+        unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(self))) }
     }
 
     /// Gets the reference count of the node
@@ -179,20 +173,18 @@ unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<Node<T>>) {
 /// assert_eq!(lrc.len(), 1);
 /// ```
 pub struct Lrc<T> {
-    head: Option<NonNull<Node<T>>>
+    head: Option<NonNull<Node<T>>>,
 }
 
 #[allow(clippy::len_without_is_empty)] // If it is empty, the Lrc is destroyed, therefore is_empty is useless
-impl <T> Lrc<T> {
-
+impl<T> Lrc<T> {
     /// Allocates the element on the heap next to a reference counter and next and previous pointers.
     pub fn new(element: T) -> Self {
         let node = Node::new(element);
         Lrc {
-            head: Some(node.into_not_null())
+            head: Some(node.into_not_null()),
         }
     }
-
 
     /// Sets a new value as the head, pushing the previous head to the second node in the list.
     ///
@@ -221,7 +213,6 @@ impl <T> Lrc<T> {
             self.push_head(Node::new(element));
         }
     }
-
 
     /// Gets a mutable reference to the owned value if this Lrc has exclusive ownership over its data.
     ///
@@ -429,7 +420,7 @@ impl <T> Lrc<T> {
                     // Because the rec-count is >=2, then this operation will never indicate that
                     // the node should be dropped, as it will never reach 0.
                     (*head.as_ptr()).dec_count();
-                },
+                }
             }
         }
 
@@ -491,21 +482,16 @@ impl <T> Lrc<T> {
 
     /// Gets a mutable reference to the head node.
     fn get_mut_head_node(&mut self) -> &mut Node<T> {
-        unsafe {
-            self.head.as_mut().unwrap().as_mut()
-        }
+        unsafe { self.head.as_mut().unwrap().as_mut() }
     }
 
     /// Gets a reference to the head node.
     fn get_ref_head_node(&self) -> &Node<T> {
-        unsafe {
-            self.head.as_ref().unwrap().as_ref()
-        }
+        unsafe { self.head.as_ref().unwrap().as_ref() }
     }
-
 }
 
-impl <T: Clone> Lrc<T> {
+impl<T: Clone> Lrc<T> {
     /// Provides a mutable reference to the head's value.
     /// If the head is shared with another LRC, this will clone the head to ensure exclusive access.
     ///
@@ -526,7 +512,7 @@ impl <T: Clone> Lrc<T> {
     /// assert_eq!(lrc.len(), 2, "This Lrc is still exclusive, so no more allocations are needed.");
     /// ```
     pub fn make_mut(&mut self) -> &mut T {
-        if self.get_count() > 1 {
+        if !self.is_exclusive() {
             // Clone to ensure unique ownership
             let mut cloned_element: Takeable<T> = self.get_ref_head_node().element.clone();
             self.push_head(Node::new(cloned_element.take()))
@@ -535,13 +521,16 @@ impl <T: Clone> Lrc<T> {
     }
 }
 
-// TODO consider removing as lrc.make_mut().neq_assign(etc) should work just as well.
-impl <T: PartialEq> Lrc<T> {
+impl<T: PartialEq> Lrc<T> {
     /// Only sets if the new element is different than the current element.
     ///
     /// It will return true if they were not equal, indicating that an assignment has occurred.
+    ///
+    /// This is better than `lrc.make_mut().neq_assign(value)` because this will
+    /// not allocate a copy if the current value if the current value and the new value don't match,
+    /// while `make_mut()` will do that up front, before the equality check.
     pub fn neq_set(&mut self, element: T) -> bool {
-        if self. get_ref_head_node().element.as_ref() != &element {
+        if self.get_ref_head_node().element.as_ref() != &element {
             self.set(element);
             true
         } else {
@@ -550,7 +539,7 @@ impl <T: PartialEq> Lrc<T> {
     }
 }
 
-impl <T> Drop for Lrc<T> {
+impl<T> Drop for Lrc<T> {
     fn drop(&mut self) {
         let head = self.head.expect("Head should always be present.");
         unsafe {
@@ -558,59 +547,59 @@ impl <T> Drop for Lrc<T> {
         }
     }
 }
-impl <T> Clone for Lrc<T> {
+impl<T> Clone for Lrc<T> {
     fn clone(&self) -> Self {
         if let Some(head) = self.head {
             unsafe {
                 head.as_ref().inc_count();
             }
         }
-        Lrc {
-            head: self.head
-        }
+        Lrc { head: self.head }
     }
 }
 
-impl <T: PartialEq> PartialEq for Lrc<T> {
+impl<T: PartialEq> PartialEq for Lrc<T> {
     fn eq(&self, other: &Self) -> bool {
         // TODO refactor this to remove the unsafe block.
-        unsafe{
+        unsafe {
             match (self.head, other.head) {
-                (Some(lhs), Some(rhs)) => {
-                    lhs.as_ref().element.eq(&rhs.as_ref().element)
-                }
-                _ => false
+                (Some(lhs), Some(rhs)) => lhs.as_ref().element.eq(&rhs.as_ref().element),
+                _ => false,
             }
         }
     }
 }
 
-impl <T: Eq> Eq for Lrc<T> {}
+impl<T: Eq> Eq for Lrc<T> {}
 
-impl <T: PartialOrd> PartialOrd for Lrc<T> {
+impl<T: PartialOrd> PartialOrd for Lrc<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.get_ref_head_node().element.partial_cmp(&other.get_ref_head_node().element)
+        self.get_ref_head_node()
+            .element
+            .partial_cmp(&other.get_ref_head_node().element)
     }
 }
-impl <T: Ord> Ord for Lrc<T> {
+impl<T: Ord> Ord for Lrc<T> {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.get_ref_head_node().element.cmp(&other.get_ref_head_node().element)
+        self.get_ref_head_node()
+            .element
+            .cmp(&other.get_ref_head_node().element)
     }
 }
 
-impl <T: Hash> Hash for Lrc<T> {
+impl<T: Hash> Hash for Lrc<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.get_ref_head_node().element.hash(state)
     }
 }
 
-impl <T> AsRef<T> for Lrc<T> {
+impl<T> AsRef<T> for Lrc<T> {
     fn as_ref(&self) -> &T {
         &self.get_ref_head_node().element.as_ref()
     }
 }
 
-impl <T> Deref for Lrc<T> {
+impl<T> Deref for Lrc<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -618,32 +607,32 @@ impl <T> Deref for Lrc<T> {
     }
 }
 
-impl <T: fmt::Debug> fmt::Debug for Lrc<T> {
+impl<T: fmt::Debug> fmt::Debug for Lrc<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Lrc").field(&self.head).finish()
     }
 }
 
-impl <T> Iterator for Lrc<T> {
+impl<T> Iterator for Lrc<T> {
     type Item = Lrc<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.get_ref_head_node().next.map(|ptr| {
-            unsafe {ptr.as_ref().inc_count();}
-            Lrc {
-                head: Some(ptr)
+            unsafe {
+                ptr.as_ref().inc_count();
             }
+            Lrc { head: Some(ptr) }
         })
     }
 }
 
-impl <T> DoubleEndedIterator for Lrc<T> {
+impl<T> DoubleEndedIterator for Lrc<T> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.get_ref_head_node().prev.map(|ptr| {
-            unsafe {ptr.as_ref().inc_count();}
-            Lrc {
-                head: Some(ptr)
+            unsafe {
+                ptr.as_ref().inc_count();
             }
+            Lrc { head: Some(ptr) }
         })
     }
 }
@@ -655,7 +644,12 @@ mod test {
     #[test]
     fn lrc_new() {
         let lrc = Lrc::new(25);
-        assert_eq!(lrc, Lrc{head: Some(Node::new(25).into_not_null())});
+        assert_eq!(
+            lrc,
+            Lrc {
+                head: Some(Node::new(25).into_not_null())
+            }
+        );
         assert_eq!(lrc.as_ref(), &25)
     }
 
@@ -675,38 +669,89 @@ mod test {
     }
 
     #[test]
-    fn len_1() {
+    fn len_not_changed_by_setting_exclusive_lrc() {
         let mut lrc = Lrc::new(25);
         lrc.set(24);
         assert_eq!(lrc.len(), 1);
     }
 
+    #[test]
+    fn make_mut_will_clone_if_shared() {
+        let mut lrc = Lrc::new(0);
+        let _shared = lrc.clone();
+        lrc.make_mut();
+
+        assert_eq!(lrc.len(), 2);
+    }
+
+    #[test]
+    fn exclusive_set_equivalent_to_exclusive_make_mut() {
+        let mut lrc = Lrc::new(0);
+        lrc.set(1);
+        assert_eq!(lrc.as_ref(), &1);
+        assert_eq!(lrc.len(), 1);
+        assert_eq!(lrc.get_count(), 1);
+
+        let mut lrc = Lrc::new(0);
+        *lrc.make_mut() = 1;
+        assert_eq!(lrc.as_ref(), &1);
+        assert_eq!(lrc.len(), 1);
+        assert_eq!(lrc.get_count(), 1);
+    }
 
     #[test]
     fn droping_middle_connects_prev_and_next() {
         let mut lrc = Lrc::new(0);
-        assert_eq!(lrc.get_ref_head_node().count, Cell::new(1), "exclusive ownership");
+        assert_eq!(
+            lrc.get_ref_head_node().count,
+            Cell::new(1),
+            "exclusive ownership"
+        );
 
         // Clone the initial value so it will stick around towards the end of this test
         let _og_clone = lrc.clone();
-        assert_eq!(lrc.get_ref_head_node().count, Cell::new(2), "shared ownership");
+        assert_eq!(
+            lrc.get_ref_head_node().count,
+            Cell::new(2),
+            "shared ownership"
+        );
 
         lrc.set(1);
 
         assert_eq!(lrc.get_ref_head_node().prev, None);
         assert_eq!(lrc.get_ref_head_node().element.as_ref(), &1);
         assert_eq!(lrc.get_ref_head_node().count, Cell::new(1));
-        assert!(lrc.get_ref_head_node().next.is_some(), "Should have pointer to previous head");
+        assert!(
+            lrc.get_ref_head_node().next.is_some(),
+            "Should have pointer to previous head"
+        );
 
         unsafe {
-            let lrcs_next = lrc.get_ref_head_node().next.as_ref().expect("Should have next node").as_ref();
-            let lrcs_nexts_prev = lrcs_next.prev.as_ref().expect("next.prev should be some").as_ref();
+            let lrcs_next = lrc
+                .get_ref_head_node()
+                .next
+                .as_ref()
+                .expect("Should have next node")
+                .as_ref();
+            let lrcs_nexts_prev = lrcs_next
+                .prev
+                .as_ref()
+                .expect("next.prev should be some")
+                .as_ref();
 
             assert_eq!(lrcs_next.element.as_ref(), &0);
-            assert_eq!(lrcs_next.count, Cell::new(1), "Should still be owned by the Og Clone");
+            assert_eq!(
+                lrcs_next.count,
+                Cell::new(1),
+                "Should still be owned by the Og Clone"
+            );
             assert!(lrcs_next.prev.is_some(), "Should point to head");
 
-            assert_eq!(lrcs_nexts_prev, lrc.get_ref_head_node(), "the head's next ptr's prev ptr should point back to the head");
+            assert_eq!(
+                lrcs_nexts_prev,
+                lrc.get_ref_head_node(),
+                "the head's next ptr's prev ptr should point back to the head"
+            );
         }
 
         // Clone the head.
@@ -716,19 +761,38 @@ mod test {
         assert_eq!(cloned_lrc.get_ref_head_node().prev, None);
         assert_eq!(cloned_lrc.get_ref_head_node().element.as_ref(), &1);
         assert_eq!(cloned_lrc.get_ref_head_node().count, Cell::new(2));
-        assert!(cloned_lrc.get_ref_head_node().next.is_some(), "Should have pointer to previous head");
+        assert!(
+            cloned_lrc.get_ref_head_node().next.is_some(),
+            "Should have pointer to previous head"
+        );
 
         // Replace the head again
         lrc.set(2);
 
         assert_eq!(lrc.get_ref_head_node().prev, None);
-        assert_eq!(lrc.get_ref_head_node().element.as_ref(), &2, "value should now be updated to 2");
-        assert_eq!(lrc.get_ref_head_node().count, Cell::new(1), "there should only be one owner of this node");
-        assert!(lrc.get_ref_head_node().next.is_some(), "Should have pointer to previous head");
+        assert_eq!(
+            lrc.get_ref_head_node().element.as_ref(),
+            &2,
+            "value should now be updated to 2"
+        );
+        assert_eq!(
+            lrc.get_ref_head_node().count,
+            Cell::new(1),
+            "there should only be one owner of this node"
+        );
+        assert!(
+            lrc.get_ref_head_node().next.is_some(),
+            "Should have pointer to previous head"
+        );
 
         unsafe {
             // This should have modified the cloned_lrc's head's prev ptr to point to the head of the lrc
-            let cloned_lrcs_heads_prev_value = cloned_lrc.get_ref_head_node().prev.as_ref().expect("Should point to head").as_ref();
+            let cloned_lrcs_heads_prev_value = cloned_lrc
+                .get_ref_head_node()
+                .prev
+                .as_ref()
+                .expect("Should point to head")
+                .as_ref();
             assert_eq!(cloned_lrcs_heads_prev_value, lrc.get_ref_head_node());
         }
 
@@ -742,7 +806,12 @@ mod test {
         assert_eq!(lrc.len(), 2);
 
         unsafe {
-            let lrcs_next = lrc.get_ref_head_node().next.as_ref().expect("Should have next node").as_ref();
+            let lrcs_next = lrc
+                .get_ref_head_node()
+                .next
+                .as_ref()
+                .expect("Should have next node")
+                .as_ref();
             assert_eq!(lrcs_next.element.as_ref(), &0);
         }
     }
@@ -819,7 +888,6 @@ mod test {
         assert_eq!(lrc.as_ref(), &1);
     }
 
-
     #[test]
     fn advance_back() {
         let mut lrc = Lrc::new(0);
@@ -837,7 +905,10 @@ mod test {
         assert!(!did_advance, "No newer values to advance to.");
 
         let did_advance = clone.advance_next();
-        assert!(!did_advance, "can't restore old value, as it has be dropped.");
+        assert!(
+            !did_advance,
+            "can't restore old value, as it has be dropped."
+        );
     }
 
     #[test]
@@ -857,6 +928,9 @@ mod test {
         assert!(!did_advance, "No older values to advance to.");
 
         let did_advance = clone.advance_back();
-        assert!(!did_advance, "Can't restore old value, as it has be dropped.");
+        assert!(
+            !did_advance,
+            "Can't restore old value, as it has be dropped."
+        );
     }
 }

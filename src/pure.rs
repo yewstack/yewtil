@@ -40,4 +40,3 @@ impl<T: PureComponent + Emissive + PartialEq + 'static> Component for Pure<T> {
         self.0.render()
     }
 }
-

@@ -19,15 +19,15 @@ impl Component for Model {
 
     fn create(_: Self::Properties, _: ComponentLink<Self>) -> Self {
         Model {
-            fetch_state: FetchState::unloaded()
+            fetch_state: FetchState::unloaded(),
         }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
-            Msg::DataLoaded => {
-                self.fetch_state.neq_assign(FetchState::fetched("Lorem Ipsum Dolor Sit".to_string()))
-            }
+            Msg::DataLoaded => self
+                .fetch_state
+                .neq_assign(FetchState::fetched("Lorem Ipsum Dolor Sit".to_string())),
         }
     }
 
@@ -47,8 +47,6 @@ impl Component for Model {
         }
     }
 }
-
-
 
 fn main() {
     web_logger::init();

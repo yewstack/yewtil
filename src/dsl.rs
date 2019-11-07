@@ -1,21 +1,20 @@
-use yew::virtual_dom::{VNode};
-use yew::virtual_dom::vcomp::ScopeHolder;
-use yew::{Component};
-pub use crate::dsl::vtag::VTagProducer;
 pub use crate::dsl::vcomp::VCompProducer;
-pub use crate::dsl::vtext::VTextProducer;
 use crate::dsl::vlist::VListProducer;
+pub use crate::dsl::vtag::VTagProducer;
+pub use crate::dsl::vtext::VTextProducer;
+use yew::virtual_dom::vcomp::ScopeHolder;
+use yew::virtual_dom::VNode;
+use yew::Component;
 
 mod vcomp;
+mod vlist;
 mod vtag;
 mod vtext;
-mod vlist;
-
 
 /// Wrapper around a function that produces a vnode.
 pub struct BoxedVNodeProducer<COMP: Component>(Box<dyn FnOnce(ScopeHolder<COMP>) -> VNode<COMP>>);
 
-impl <COMP: Component> BoxedVNodeProducer<COMP> {
+impl<COMP: Component> BoxedVNodeProducer<COMP> {
     fn wrap(f: impl FnOnce(ScopeHolder<COMP>) -> VNode<COMP> + 'static) -> Self {
         BoxedVNodeProducer(Box::new(f))
     }
@@ -28,12 +27,11 @@ impl <COMP: Component> BoxedVNodeProducer<COMP> {
     }
 }
 
-impl <COMP: Component> Into<VNode<COMP>> for BoxedVNodeProducer<COMP> {
+impl<COMP: Component> Into<VNode<COMP>> for BoxedVNodeProducer<COMP> {
     fn into(self) -> VNode<COMP> {
         self.build()
     }
 }
-
 
 /// Creates a tag node.
 pub fn tag<COMP: Component>(tag: &'static str) -> VTagProducer<COMP> {
@@ -59,7 +57,3 @@ pub fn populated_list<COMP: Component>(list: Vec<BoxedVNodeProducer<COMP>>) -> V
 pub fn list<COMP: Component>() -> VListProducer<COMP> {
     VListProducer::new()
 }
-
-
-
-
