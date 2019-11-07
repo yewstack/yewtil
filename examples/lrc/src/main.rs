@@ -25,8 +25,7 @@ impl Component for Model {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             Msg::UpdateTextAtADistance => {
-                self.text.update();
-                true
+                self.text.update()
             }
         }
     }
@@ -37,6 +36,8 @@ impl Component for Model {
                 <div>
                    {self.text.as_ref()} // This implicit clone is cheap, as it doesn't copy the String
                 </div>
+                // Either of the children's update buttons will cause this component's text
+                // to update to the most recently edited text.
                 <div>
                     <Child text=&self.text callback = |_| Msg::UpdateTextAtADistance />
                 </div>

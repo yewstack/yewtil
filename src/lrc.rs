@@ -299,10 +299,12 @@ impl<T> Lrc<T> {
     /// lrc.update();
     /// assert_eq!(lrc.as_ref(), &1);
     /// ```
-    pub fn update(&mut self) {
+    pub fn update(&mut self) -> bool {
+        let did_update = self.get_ref_head_node().prev.is_some();
         while let Some(prev) = self.next_back() {
             *self = prev;
         }
+        did_update
     }
 
     /// Advances to the next node. The next node will be a node older than the current one.
