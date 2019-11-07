@@ -40,6 +40,9 @@ impl Component for Model {
                 <div>
                     <Child text=&self.text callback = |_| Msg::UpdateTextAtADistance />
                 </div>
+                <div>
+                    <Child text=&self.text callback = |_| Msg::UpdateTextAtADistance />
+                </div>
             </>
         }
     }

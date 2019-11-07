@@ -545,7 +545,7 @@ impl<T: Clone> Lrc<T> {
                 element
             }
         } else {
-           self.get_ref_head_node().element.clone()
+           self.get_ref_head_node().element.as_ref().clone()
         }
     }
 }
