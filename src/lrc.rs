@@ -103,18 +103,18 @@ impl <T> Node<T> {
 ///
 /// Deallocating involves attaching the node's prev's next to the node's next ptr,
 /// and attaching the node's next's prev to the node's prev ptr.
-/// This connects the nodes surrounding the pointer with each other.
+/// This connects the nodes surrounding the provided node with each other.
 unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<Node<T>>) {
     // If the heads ref-count is 0
     if node.as_ref().dec_count() {
         // Attach surrounding nodes to each other as this one is removed.
-        (*node.as_ptr()).prev.as_mut().map(|prev| {
+        if let Some(prev) = (*node.as_ptr()).prev.as_mut() {
             prev.as_mut().next = (*node.as_ptr()).next.take();
-        });
+        }
 
-        (*node.as_ptr()).next.as_mut().map(|next| {
+        if let Some(next) = (*node.as_ptr()).next.as_mut() {
             next.as_mut().prev = (*node.as_ptr()).prev.take();
-        });
+        }
 
         std::ptr::drop_in_place(node.as_ptr());
     }
@@ -178,6 +178,7 @@ pub struct Lrc<T> {
     head: Option<NonNull<Node<T>>>
 }
 
+#[allow(clippy::len_without_is_empty)]
 impl <T> Lrc<T> {
 
     /// Allocates the element on the heap next to a reference counter and next and previous pointers.
@@ -278,13 +279,13 @@ impl <T> Lrc<T> {
             unsafe {
                 let element = (*head.as_ptr()).element.take();
 
-                (*head.as_ptr()).prev.as_mut().map(|prev| {
+                if let Some(prev) = (*head.as_ptr()).prev.as_mut() {
                     prev.as_mut().next = (*head.as_ptr()).next.take();
-                });
+                }
 
-                (*head.as_ptr()).next.as_mut().map(|next| {
+                if let Some(next) = (*head.as_ptr()).next.as_mut() {
                     next.as_mut().prev = (*head.as_ptr()).prev.take();
-                });
+                }
 
                 std::ptr::drop_in_place(head.as_ptr());
 
@@ -532,7 +533,7 @@ impl <T> Clone for Lrc<T> {
             }
         }
         Lrc {
-            head: self.head.clone()
+            head: self.head
         }
     }
 }
