@@ -8,44 +8,11 @@ use std::ops::Deref;
 use std::ptr::NonNull;
 use std::borrow::Borrow;
 
+use crate::ptr::takeable::Takeable;
+
 type IsZero = bool;
 
-/// A wrapper around Option<T> that only allows items to be taken.
-///
-/// # Warning
-/// It is expected to only take items from this structure in a way that
-/// it will never be accessed after items have been taken.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct Takeable<T>(Option<T>); // TODO, consider using MaybeUninit instead of option here. it will save a word's worth of space, but making sure that the drops get called will become hairy
 
-impl<T> Takeable<T> {
-    fn new(item: T) -> Self {
-        Takeable(Some(item))
-    }
-
-    /// This should only be called once.
-    fn take(&mut self) -> T {
-        self.0.take().expect("Can't take twice")
-    }
-}
-
-impl<T> AsRef<T> for Takeable<T> {
-    fn as_ref(&self) -> &T {
-        self.0.as_ref().unwrap()
-    }
-}
-
-impl<T> AsMut<T> for Takeable<T> {
-    fn as_mut(&mut self) -> &mut T {
-        self.0.as_mut().unwrap()
-    }
-}
-
-impl<T: fmt::Debug> fmt::Debug for Takeable<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.as_ref().unwrap().fmt(f)
-    }
-}
 
 // TODO consider renaming prev and next to new and old respectively.
 #[derive(PartialEq, Debug)]
@@ -171,7 +138,7 @@ unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<Node<T>>) {
 ///
 /// # Example
 /// ```
-/// use yewtil::lrc::Lrc;
+/// use yewtil::ptr::Lrc;
 /// let mut lrc = Lrc::new("Some String".to_string());
 ///
 /// let mut clone = lrc.clone();
@@ -228,7 +195,7 @@ impl<T> Lrc<T> {
     ///
     /// # Example
     /// ```
-    ///# use yewtil::lrc::Lrc;
+    ///# use yewtil::ptr::Lrc;
     /// let mut lrc = Lrc::new(0);
     /// lrc.set(1);
     /// assert_eq!(lrc.as_ref(), &1);
@@ -247,7 +214,7 @@ impl<T> Lrc<T> {
     ///
     /// # Example
     /// ```
-    ///# use yewtil::lrc::Lrc;
+    ///# use yewtil::ptr::Lrc;
     /// let mut lrc = Lrc::new(1);
     ///
     /// let inner = lrc.get_mut();
@@ -274,7 +241,7 @@ impl<T> Lrc<T> {
     ///
     /// # Example
     /// ```
-    ///# use yewtil::lrc::Lrc;
+    ///# use yewtil::ptr::Lrc;
     /// let lrc = Lrc::new(0);
     /// assert_eq!(lrc.try_unwrap(), Ok(0));
     ///
@@ -330,7 +297,7 @@ impl<T> Lrc<T> {
     ///
     /// # Example
     /// ```
-    ///# use yewtil::lrc::Lrc;
+    ///# use yewtil::ptr::Lrc;
     /// let mut lrc = Lrc::new(0);
     ///
     /// let mut cloned_lrc = lrc.clone();
@@ -364,7 +331,7 @@ impl<T> Lrc<T> {
     ///
     /// # Example
     /// ```
-    ///# use yewtil::lrc::Lrc;
+    ///# use yewtil::ptr::Lrc;
     /// let mut lrc = Lrc::new(0);
     /// let mut clone = lrc.clone();
     /// lrc.set(1);
@@ -406,7 +373,7 @@ impl<T> Lrc<T> {
     ///
     /// # Example
     /// ```
-    ///# use yewtil::lrc::Lrc;
+    ///# use yewtil::ptr::Lrc;
     /// let mut lrc = Lrc::new(0);
     /// let mut clone = lrc.clone();
     /// lrc.set(1);
@@ -436,7 +403,7 @@ impl<T> Lrc<T> {
     ///
     /// # Example
     /// ```
-    ///# use yewtil::lrc::Lrc;
+    ///# use yewtil::ptr::Lrc;
     /// let lrc1 = Lrc::new(10);
     /// let lrc2 = Lrc::new(10);
     ///
@@ -479,7 +446,7 @@ impl<T> Lrc<T> {
 
     /// Gets the reference count of the head node.
     /// ```
-    ///# use yewtil::lrc::Lrc;
+    ///# use yewtil::ptr::Lrc;
     /// let lrc = Lrc::new(1);
     /// let count = (&lrc).get_count();
     /// assert_eq!(count, 1);
@@ -498,7 +465,7 @@ impl<T> Lrc<T> {
 
     /// Returns `true` if no other `Lrc`s point to the head node.
     /// ```
-    ///# use yewtil::lrc::Lrc;
+    ///# use yewtil::ptr::Lrc;
     /// let lrc = Lrc::new(1);
     /// assert!(lrc.is_exclusive());
     /// let _lrc_clone = lrc.clone();
@@ -562,7 +529,7 @@ impl<T: Clone> Lrc<T> {
     ///
     /// # Example
     /// ```
-    ///# use yewtil::lrc::Lrc;
+    ///# use yewtil::ptr::Lrc;
     /// let mut lrc = Lrc::new(1);
     /// let _lrc_clone = lrc.clone();
     ///
