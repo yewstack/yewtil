@@ -67,7 +67,7 @@ impl <T> Mrc<T> {
     /// Returns an immutable reference counted pointer,
     /// pointing to the same value and reference count.
     pub fn irc(&self) -> Irc<T> {
-        // TODO this is unsound, the ref count needs to be incremented
+        get_ref_boxed_content(&self.ptr).inc_count();
         Irc {
             ptr: self.ptr
         }
@@ -89,7 +89,7 @@ impl <T: Clone> Mrc<T> {
         if !self.is_exclusive() {
             let rc_box = RcBox::new(self.clone_inner());
             let ptr = rc_box.into_non_null();
-            
+
             // decrement the count for the boxed content at the current pointer
             // because this Mrc will point to a new value.
 
@@ -128,13 +128,7 @@ impl <T: Clone> DerefMut for Mrc<T> {
     }
 }
 
-//impl <T> AsRef<T> for Mrc<T> {
-//    fn as_ref(&self) -> &T {
-//        self.get_ref_boxed_content().value.as_ref()
-//    }
-//}
 
-// TODO should this be implemented?
 impl <T: Clone> AsMut<T> for Mrc<T> {
     fn as_mut(&mut self) -> &mut T {
         self.make_mut()
