@@ -1,5 +1,5 @@
 use std::ops::Deref;
-use crate::ptr::rc_box::{RcBox, decrement_and_possibly_deallocate};
+use crate::ptr::rc_box::{RcBox, decrement_and_possibly_deallocate, get_ref_boxed_content, is_exclusive, get_count, try_unwrap, clone_inner, unwrap_clone, clone_impl};
 use std::ptr::NonNull;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
@@ -22,47 +22,31 @@ impl <T> Irc<T> {
     }
 
 
-    pub fn try_unwrap(mut self) -> Option<T> {
-        if self.is_exclusive() {
-            Some(self.get_mut_boxed_content().value.take())
-        } else {
-            None
-        }
+    pub fn try_unwrap(self) -> Result<T, Self> {
+        try_unwrap(self.ptr)
+            .map_err(|ptr|{
+                Self {ptr} // Recover the ptr
+            })
     }
 
     pub fn get_count(&self) -> usize {
-        self.get_ref_boxed_content().get_count()
+        get_count(self.ptr)
     }
 
     pub fn is_exclusive(&self) -> bool {
-        self.get_count() == 1
-    }
-
-    /// Gets a mutable reference to the head node.
-    pub(crate) fn get_mut_boxed_content(&mut self) -> &mut RcBox<T> {
-        unsafe { self.ptr.as_mut() }
-    }
-
-    /// Gets a reference to the head node.
-    pub(crate) fn get_ref_boxed_content(&self) -> &RcBox<T> {
-        unsafe { self.ptr.as_ref()}
+        is_exclusive(self.ptr)
     }
 }
 
 
 impl <T: Clone> Irc<T> {
 
-    pub fn unwrap_clone(mut self) -> T {
-        if self.is_exclusive() {
-            // Don't need to decrement the count, because this structure is getting destroyed anyways.
-            self.get_mut_boxed_content().value.take()
-        } else {
-            self.clone_inner()
-        }
+    pub fn unwrap_clone(self) -> T {
+        unwrap_clone(self.ptr)
     }
     /// Clones the wrapped value at the `Lrc`'s head.
     pub fn clone_inner(&self) -> T {
-        self.get_ref_boxed_content().value.as_ref().clone()
+        clone_inner(self.ptr)
     }
 }
 
@@ -76,11 +60,15 @@ impl <T> Drop for Irc<T> {
 
 impl <T> Clone for Irc<T> {
     fn clone(&self) -> Self {
-        // Increment the ref count
-        self.get_ref_boxed_content().inc_count();
         Self {
-            ptr: self.ptr
+            ptr: clone_impl(self.ptr)
         }
+    }
+}
+
+impl <T> AsRef<T> for Irc<T> {
+    fn as_ref(&self) -> &T {
+        get_ref_boxed_content(&self.ptr).value.as_ref()
     }
 }
 
@@ -92,19 +80,11 @@ impl <T> Deref for Irc<T> {
     }
 }
 
-
-impl <T> AsRef<T> for Irc<T> {
-    fn as_ref(&self) -> &T {
-        self.get_ref_boxed_content().value.as_ref()
-    }
-}
-
 impl <T> Borrow<T> for Irc<T> {
     fn borrow(&self) -> &T {
         self.as_ref()
     }
 }
-
 
 
 impl <T: PartialEq> PartialEq for Irc<T> {
@@ -129,7 +109,7 @@ impl <T: Ord> Ord for Irc<T> {
 
 impl <T: Hash> Hash for Irc<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.get_ref_boxed_content().value.as_ref().hash(state)
+        self.as_ref().hash(state)
     }
 }
 

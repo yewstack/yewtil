@@ -45,6 +45,11 @@ impl <T> RcBox<T> {
         self.count.set(count);
         count == 0
     }
+
+    pub(crate) fn is_exclusive(&self) -> bool {
+        self.get_count() == 1
+    }
+
 }
 
 pub(crate) unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<RcBox<T>>) {
@@ -52,4 +57,48 @@ pub(crate) unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<RcBox<T>
     if node.as_ref().dec_count() {
         std::ptr::drop_in_place(node.as_ptr());
     }
+}
+
+
+pub(crate) fn get_mut_boxed_content<T>(ptr: &mut NonNull<RcBox<T>>) -> &mut RcBox<T> {
+    unsafe { ptr.as_mut() }
+}
+pub(crate) fn get_ref_boxed_content<T>(ptr: &NonNull<RcBox<T>>) -> &RcBox<T> {
+    unsafe { ptr.as_ref() }
+}
+
+pub(crate) fn get_count<T>(ptr: NonNull<RcBox<T>>) -> usize {
+    get_ref_boxed_content(&ptr).get_count()
+}
+
+pub(crate) fn is_exclusive<T>(ptr: NonNull<RcBox<T>>) -> bool {
+    get_ref_boxed_content(&ptr).is_exclusive()
+}
+
+pub(crate) fn try_unwrap<T>(mut ptr: NonNull<RcBox<T>>) -> Result<T, NonNull<RcBox<T>>> {
+    if is_exclusive(ptr) {
+        Ok(get_mut_boxed_content(&mut ptr).value.take())
+    } else {
+        Err(ptr)
+    }
+}
+
+pub(crate) fn clone_inner<T: Clone>(ptr: NonNull<RcBox<T>>) -> T {
+    get_ref_boxed_content(&ptr).value.as_ref().clone()
+}
+
+pub(crate) fn unwrap_clone<T: Clone>(mut ptr: NonNull<RcBox<T>>) -> T {
+    if is_exclusive(ptr) {
+        get_mut_boxed_content(&mut ptr).value.take()
+    } else {
+        clone_inner(ptr)
+    }
+}
+
+/// Clones the pointer after incrementing the reference count.
+pub(crate) fn clone_impl<T>(ptr: NonNull<RcBox<T>>) -> NonNull<RcBox<T>> {
+    // Increment the ref count
+    get_ref_boxed_content(&ptr).inc_count();
+    // rerturn the ptr
+    ptr
 }
