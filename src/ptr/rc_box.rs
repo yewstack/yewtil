@@ -13,6 +13,8 @@ pub(crate) struct RcBox<T> {
 
 /// The boxed content used in Irc and Mrc.
 impl <T> RcBox<T> {
+
+    #[inline]
     pub(crate) fn new(value: T) -> Self {
         Self {
             value: Takeable::new(value),
@@ -20,6 +22,7 @@ impl <T> RcBox<T> {
         }
     }
 
+    #[inline]
     pub(crate) fn into_non_null(self) -> NonNull<Self> {
         unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(self))) }
     }
@@ -30,6 +33,7 @@ impl <T> RcBox<T> {
     }
 
     /// Increments the reference count of the node.
+    #[inline]
     pub(crate) fn inc_count(&self) {
         let mut count = self.count.get();
         count += 1;
@@ -39,6 +43,7 @@ impl <T> RcBox<T> {
     /// Decrements the reference count of the node.
     /// It will return true if the count hits zero.
     /// This can be used to determine if the node should be deallocated.
+    #[inline]
     pub(crate) fn dec_count(&self) -> IsZero {
         let mut count = self.count.get();
         count -= 1;
@@ -46,12 +51,14 @@ impl <T> RcBox<T> {
         count == 0
     }
 
+    #[inline]
     pub(crate) fn is_exclusive(&self) -> bool {
         self.get_count() == 1
     }
 
 }
 
+#[inline]
 pub(crate) unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<RcBox<T>>) {
     // If the heads ref-count is 0
     if node.as_ref().dec_count() {
@@ -60,21 +67,26 @@ pub(crate) unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<RcBox<T>
 }
 
 
+#[inline(always)]
 pub(crate) fn get_mut_boxed_content<T>(ptr: &mut NonNull<RcBox<T>>) -> &mut RcBox<T> {
     unsafe { ptr.as_mut() }
 }
+#[inline(always)]
 pub(crate) fn get_ref_boxed_content<T>(ptr: &NonNull<RcBox<T>>) -> &RcBox<T> {
     unsafe { ptr.as_ref() }
 }
 
+#[inline]
 pub(crate) fn get_count<T>(ptr: NonNull<RcBox<T>>) -> usize {
     get_ref_boxed_content(&ptr).get_count()
 }
 
+#[inline]
 pub(crate) fn is_exclusive<T>(ptr: NonNull<RcBox<T>>) -> bool {
     get_ref_boxed_content(&ptr).is_exclusive()
 }
 
+#[inline]
 pub(crate) fn try_unwrap<T>(mut ptr: NonNull<RcBox<T>>) -> Result<T, NonNull<RcBox<T>>> {
     if is_exclusive(ptr) {
         Ok(get_mut_boxed_content(&mut ptr).value.take())
@@ -83,10 +95,12 @@ pub(crate) fn try_unwrap<T>(mut ptr: NonNull<RcBox<T>>) -> Result<T, NonNull<RcB
     }
 }
 
+#[inline]
 pub(crate) fn clone_inner<T: Clone>(ptr: NonNull<RcBox<T>>) -> T {
     get_ref_boxed_content(&ptr).value.as_ref().clone()
 }
 
+#[inline]
 pub(crate) fn unwrap_clone<T: Clone>(mut ptr: NonNull<RcBox<T>>) -> T {
     if is_exclusive(ptr) {
         get_mut_boxed_content(&mut ptr).value.take()
@@ -96,6 +110,7 @@ pub(crate) fn unwrap_clone<T: Clone>(mut ptr: NonNull<RcBox<T>>) -> T {
 }
 
 /// Clones the pointer after incrementing the reference count.
+#[inline]
 pub(crate) fn clone_impl<T>(ptr: NonNull<RcBox<T>>) -> NonNull<RcBox<T>> {
     // Increment the ref count
     get_ref_boxed_content(&ptr).inc_count();
