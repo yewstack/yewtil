@@ -1,13 +1,13 @@
 use crate::ptr::rc_box::{RcBox, try_unwrap, get_count, is_exclusive, get_mut_boxed_content, clone_impl, clone_inner, unwrap_clone, get_ref_boxed_content};
 use std::ops::Deref;
-use failure::_core::ops::DerefMut;
-use failure::_core::borrow::{Borrow, BorrowMut};
+use std::ops::DerefMut;
+use std::borrow::{Borrow, BorrowMut};
 use crate::ptr::Irc;
 use failure::_core::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
 
-/// Mutable rc pointer
+/// Mutable RC pointer
 ///
 /// It functions similarly to an `std::rc::Rc` pointer,
 /// except that it does not support weak pointers,
@@ -22,6 +22,7 @@ use std::ptr::NonNull;
 /// This makes it ideal for passing around configuration data where some components can ergonomicly
 /// "modify" and cheaply pass the pointers back to parent components, while other components can only read it.
 pub struct Mrc<T>{
+    /// Pointer to the value and reference counter.
     ptr: NonNull<RcBox<T>>
 }
 

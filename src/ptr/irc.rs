@@ -5,10 +5,10 @@ use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 
-/// Immutable rc pointer.
+/// Immutable RC pointer.
 ///
-/// It is a newtype around Mrc without &mut functions exposed.
 pub struct Irc<T> {
+    /// Pointer to the value and reference counter.
     pub(crate) ptr: NonNull<RcBox<T>>
 }
 
