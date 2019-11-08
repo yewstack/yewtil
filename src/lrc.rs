@@ -123,8 +123,12 @@ unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<Node<T>>) {
 
 
 // TODO: missing methods
+//
+// These linking operations could possibly create cycles. - I'm not sure if they should be exposed - or if they are, tagged with unsafe.
+// possibly have safe variants that check for ptr_equality along every node, but that makes linking a O(n^2) operation, which is so bad that you would almost never want to use it.
 // link_next - Join another Lrc as a next node. Both nodes must be terminating on the respective ends that are being linked.
 // link_prev - Join another Lrc as a prev node. Both nodes must be terminating on the respective ends that are being linked.
+//
 // unlink_next, unlink_prev - Unlinks the lrc from other linked lrcs.
 // into_raw - same as RC
 // from_raw - same as RC
