@@ -4,6 +4,7 @@ use crate::ptr::IsZero;
 use crate::ptr::takeable::Takeable;
 
 
+#[derive(Debug)]
 pub(crate) struct RcBox<T> {
     pub(crate) value: Takeable<T>,
     count: Cell<usize>
@@ -60,7 +61,7 @@ impl <T> RcBox<T> {
 
 #[inline]
 pub(crate) unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<RcBox<T>>) {
-    // If the heads ref-count is 0
+    // If the ref-count becomes 0
     if node.as_ref().dec_count() {
         std::ptr::drop_in_place(node.as_ptr());
     }
@@ -91,6 +92,9 @@ pub(crate) fn try_unwrap<T>(mut ptr: NonNull<RcBox<T>>) -> Result<T, NonNull<RcB
     if is_exclusive(ptr) {
         Ok(get_mut_boxed_content(&mut ptr).value.take())
     } else {
+        // The ptr's drop has ran, decrementing the count
+        // This restores the value.
+        get_ref_boxed_content(&ptr).inc_count();
         Err(ptr)
     }
 }

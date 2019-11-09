@@ -174,7 +174,7 @@ pub struct Lrc<T> {
 
 #[allow(clippy::len_without_is_empty)] // If it is empty, the Lrc is destroyed, therefore is_empty is useless
 impl<T> Lrc<T> {
-    /// Creates a new `Lrc`.
+    /// Allocates a value behind a `Lrc` pointer.
     ///
     /// This is done by allocating the `Lrc` on the heap next to a reference counter and next and previous pointers.
     pub fn new(value: T) -> Self {

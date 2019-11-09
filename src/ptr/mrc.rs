@@ -1,4 +1,4 @@
-use crate::ptr::rc_box::{RcBox, try_unwrap, get_count, is_exclusive, get_mut_boxed_content, clone_impl, clone_inner, unwrap_clone, get_ref_boxed_content};
+use crate::ptr::rc_box::{RcBox, try_unwrap, get_count, is_exclusive, get_mut_boxed_content, clone_impl, clone_inner, unwrap_clone, get_ref_boxed_content, decrement_and_possibly_deallocate};
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::borrow::{Borrow, BorrowMut};
@@ -6,11 +6,12 @@ use crate::ptr::Irc;
 use failure::_core::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
+use std::fmt;
 
 /// Mutable RC pointer
 ///
-/// It functions similarly to an `std::rc::Rc` pointer,
-/// except that it does not support weak pointers,
+/// The `Mrc` has similar semantics to `std::rc::Rc` pointer,
+/// with notable differences that it does not support `Weak` pointers,
 /// it supports `std::ops::DerefMut` via the possibly allocating `make_mut` function,
 /// and that it can create immutable handles to its data (`Irc`).
 ///
@@ -21,6 +22,22 @@ use std::ptr::NonNull;
 /// behind the pointer.
 /// This makes it ideal for passing around configuration data where some components can ergonomicly
 /// "modify" and cheaply pass the pointers back to parent components, while other components can only read it.
+///
+/// # Example
+/// ```
+/// use yewtil::ptr::Mrc;
+///
+/// let mut mrc = Mrc::new(5);
+/// *mrc = 10; // This just replaces the value because the mrc isn't shared.
+///
+/// assert_eq!(*mrc, 10);
+///
+/// let clone = mrc.clone();
+/// *mrc = 20; // This operation clones the value and allocates space for it.
+///
+/// assert_eq!(*clone, 10, "Assigning to mrc won't alter cloned Mrcs");
+/// assert_eq!(*mrc, 20);
+/// ```
 pub struct Mrc<T>{
     /// Pointer to the value and reference counter.
     ptr: NonNull<RcBox<T>>
@@ -28,7 +45,7 @@ pub struct Mrc<T>{
 
 
 impl <T> Mrc<T> {
-    /// Allocates a value behind a Mrc.
+    /// Allocates a value behind a `Mrc` pointer.
     pub fn new(value: T) -> Self {
         let rc_box = RcBox::new(value);
         let ptr = rc_box.into_non_null();
@@ -38,6 +55,19 @@ impl <T> Mrc<T> {
     }
 
     /// Attempts to get a mutable reference to the wrapped value.
+    ///
+    /// If the pointer is not shared, it will return `Some`,
+    /// whereas if multiple `Mrc`s or `Irc`s point to the value, this will return None.
+    ///
+    /// # Example
+    /// ```
+    /// use yewtil::ptr::Mrc;
+    /// let mut mrc = Mrc::new(0);
+    /// assert!(mrc.get_mut().is_some());
+    ///
+    /// let _clone = mrc.clone();
+    /// assert!(mrc.get_mut().is_none());
+    /// ```
     pub fn get_mut(&mut self) -> Option<&mut T> {
         if self.is_exclusive() {
             Some(get_mut_boxed_content(&mut self.ptr).value.as_mut())
@@ -48,6 +78,21 @@ impl <T> Mrc<T> {
 
     /// Tries to extract the value from the Mrc, returning the Mrc if there is one or
     /// more other pointers to the value.
+    ///
+    /// # Example
+    /// ```
+    /// use yewtil::ptr::Mrc;
+    /// let mrc = Mrc::new(0);
+    /// dbg!(&mrc);
+    /// let clone = mrc.clone();
+    /// dbg!(&mrc);
+    ///
+    /// let mrc = mrc.try_unwrap().expect_err("Should not be able to unwrap");
+    /// dbg!(&mrc);
+    /// std::mem::drop(clone);
+    /// dbg!(&mrc);
+    /// let value = mrc.try_unwrap().expect("Should get value");
+    /// ```
     pub fn try_unwrap(self) -> Result<T, Self> {
         try_unwrap(self.ptr)
             .map_err(|ptr|{
@@ -55,18 +100,52 @@ impl <T> Mrc<T> {
             })
     }
 
-    /// Gets the reference count of the Mrc
+    /// Gets the reference count of the `Mrc`.
+    ///
+    /// # Example
+    /// ```
+    /// use yewtil::ptr::Mrc;
+    /// let mrc = Mrc::new(0);
+    /// assert_eq!(mrc.get_count(), 1);
+    ///
+    /// let _clone = mrc.clone();
+    /// assert_eq!(mrc.get_count(), 2);
+    ///
+    /// std::mem::drop(_clone);
+    /// assert_eq!(mrc.get_count(), 1);
+    /// ```
     pub fn get_count(&self) -> usize {
         get_count(self.ptr)
     }
 
-    /// Returns true if no other pointers to the value exist.
+    /// Returns `true` if no other pointers to the value exist.
+    ///
+    /// ```
+    /// use yewtil::ptr::Mrc;
+    /// let mrc = Mrc::new(0);
+    /// assert!(mrc.is_exclusive());
+    ///
+    /// let _clone = mrc.clone();
+    /// assert!(!mrc.is_exclusive());
+    ///
+    /// std::mem::drop(_clone);
+    /// assert!(mrc.is_exclusive());
+    /// ```
     pub fn is_exclusive(&self) -> bool {
         is_exclusive(self.ptr)
     }
 
     /// Returns an immutable reference counted pointer,
     /// pointing to the same value and reference count.
+    ///
+    /// # Example
+    /// ```
+    /// use yewtil::ptr::{Mrc, Irc};
+    /// let mrc: Mrc<usize> =  Mrc::new(0);
+    /// let _irc: Irc<usize> = mrc.irc();
+    ///
+    /// assert!(!mrc.is_exclusive());
+    /// ```
     pub fn irc(&self) -> Irc<T> {
         get_ref_boxed_content(&self.ptr).inc_count();
         Irc {
@@ -75,17 +154,58 @@ impl <T> Mrc<T> {
     }
 
     /// Converts this Mrc into an Irc.
+    /// # Example
+    /// ```
+    /// use yewtil::ptr::{Mrc, Irc};
+    /// let mrc: Mrc<usize> =  Mrc::new(0);
+    /// let irc: Irc<usize> = mrc.into_irc();
+    ///
+    /// assert!(irc.is_exclusive());
+    /// ```
     pub fn into_irc(self) -> Irc<T> {
+        // Because the Mrc is dropped, decrementing the count,
+        // the count needs to be restored here.
+        get_ref_boxed_content(&self.ptr).inc_count();
         Irc {
             ptr: self.ptr
         }
+    }
+
+    /// Checks pointers for equality.
+    ///
+    /// # Example
+    /// ```
+    /// use yewtil::ptr::Mrc;
+    /// let mrc1 = Mrc::new(0);
+    /// let mrc2 = Mrc::new(0);
+    /// assert_eq!(mrc1, mrc2);
+    /// assert!(!Mrc::ptr_eq(&mrc1, &mrc2))
+    /// ```
+    pub fn ptr_eq(lhs: &Self, rhs: &Self) -> bool {
+        std::ptr::eq(lhs.ptr.as_ptr(), rhs.ptr.as_ptr())
     }
 
 }
 
 impl <T: Clone> Mrc<T> {
     /// Returns a mutable reference to the value if it has exclusive access.
-    /// If it does not have exclusive access, it will make a clone to get exclusive access
+    /// If it does not have exclusive access, it will make a clone of the data to acquire exclusive access.
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::ptr::Mrc;
+    /// let mut mrc: Mrc<usize> = Mrc::new(0);
+    ///
+    /// let _mut_ref: &mut usize = mrc.make_mut();
+    /// assert_eq!(mrc.get_count(), 1);
+    ///
+    /// let clone = mrc.clone();
+    /// assert_eq!(mrc.get_count(), 2);
+    ///
+    /// let _mut_ref: &mut usize = mrc.make_mut();
+    /// assert_eq!(mrc.get_count(), 1);
+    /// assert!(!Mrc::ptr_eq(&mrc, &clone))
+    /// ```
     pub fn make_mut(&mut self) -> &mut T {
         if !self.is_exclusive() {
             let rc_box = RcBox::new(self.clone_inner());
@@ -114,6 +234,11 @@ impl <T: Clone> Mrc<T> {
 }
 
 
+impl <T> Drop for Mrc<T> {
+    fn drop(&mut self) {
+        unsafe{decrement_and_possibly_deallocate(self.ptr)}
+    }
+}
 
 impl <T> Clone for Mrc<T> {
     fn clone(&self) -> Self {
@@ -187,5 +312,11 @@ impl <T: Ord> Ord for Mrc<T> {
 impl <T: Hash> Hash for Mrc<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.as_ref().hash(state)
+    }
+}
+
+impl <T: fmt::Debug> fmt::Debug for Mrc<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        get_ref_boxed_content(&self.ptr).fmt(f)
     }
 }
