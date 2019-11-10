@@ -24,16 +24,14 @@ impl Component for Model {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             Msg::SetText(text) => {
-                self.text.set(text); // TODO needs a neq_assign_set
-                true
+                self.text.neq_set(text)
             }
             Msg::Reset => {
-                self.text.reset();
-                true
+                self.text.reset()
             }
             Msg::Forget => {
                 self.text.forget();
-                true
+                false
             }
         }
     }

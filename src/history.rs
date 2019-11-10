@@ -47,6 +47,8 @@ impl<T> History<T> {
 
     /// Removes all prior values.
     ///
+    /// The returned bool indicates if any elements were removed.
+    ///
     /// # Example
     /// ```
     ///# use yewtil::History;
@@ -58,11 +60,18 @@ impl<T> History<T> {
     /// assert_eq!(*history, 2);
     /// assert_eq!(history.count(), 1);
     /// ```
-    pub fn forget(&mut self) {
-        self.0.drain(1..);
+    pub fn forget(&mut self) -> bool {
+        if self.dirty() {
+            self.0.drain(1..);
+            true
+        } else {
+            false
+        }
     }
 
     /// Remove all elements except the last one, making the oldest
+    ///
+    /// The returned bool indicates if any elements were removed.
     ///
     /// # Example
     /// ```
@@ -75,8 +84,13 @@ impl<T> History<T> {
     /// assert_eq!(*history, 0);
     /// assert_eq!(history.count(), 1);
     /// ```
-    pub fn reset(&mut self) {
-        self.0.drain(..self.0.len() - 1);
+    pub fn reset(&mut self) -> bool {
+        if self.dirty() {
+            self.0.drain(..self.0.len() - 1);
+            true
+        } else {
+            false
+        }
     }
 
     /// Returns true if there is more than one element in the list.
@@ -119,6 +133,17 @@ impl<T> History<T> {
         self.0
             .pop_front()
             .expect("History should have at least one item")
+    }
+}
+
+impl <T: PartialEq> History<T> {
+    pub fn neq_set(&mut self, value: T) -> bool {
+        if self.0[0] != value {
+            self.set(value);
+            true
+        } else {
+            false
+        }
     }
 }
 
