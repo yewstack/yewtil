@@ -1,10 +1,10 @@
-use yew::virtual_dom::{VTag, Listener};
-use yew::virtual_dom::vcomp::ScopeHolder;
-use yew::{Component, Classes};
 use crate::dsl::BoxedVNodeProducer;
+use yew::virtual_dom::vcomp::ScopeHolder;
+use yew::virtual_dom::{Listener, VTag};
+use yew::{Classes, Component};
 
 pub struct Effect<T, COMP: Component>(Box<dyn FnOnce(T, &ScopeHolder<COMP>) -> T>);
-impl <T, COMP: Component> Effect<T, COMP> {
+impl<T, COMP: Component> Effect<T, COMP> {
     fn new(f: impl FnOnce(T, &ScopeHolder<COMP>) -> T + 'static) -> Self {
         Effect(Box::new(f))
     }
@@ -12,14 +12,14 @@ impl <T, COMP: Component> Effect<T, COMP> {
 
 pub struct VTagProducer<COMP: Component> {
     tag_type: &'static str,
-    effects: Vec<Effect<VTag<COMP>, COMP>>
+    effects: Vec<Effect<VTag<COMP>, COMP>>,
 }
 
-impl <COMP: Component> VTagProducer<COMP> {
+impl<COMP: Component> VTagProducer<COMP> {
     pub fn new(tag_type: &'static str) -> Self {
         VTagProducer {
             tag_type,
-            effects: vec![]
+            effects: vec![],
         }
     }
 
@@ -60,11 +60,9 @@ impl <COMP: Component> VTagProducer<COMP> {
         self.effects.push(effect);
         self
     }
-
 }
 
-
-impl <COMP: Component> From<VTagProducer<COMP>> for BoxedVNodeProducer<COMP> {
+impl<COMP: Component> From<VTagProducer<COMP>> for BoxedVNodeProducer<COMP> {
     fn from(vtag_prod: VTagProducer<COMP>) -> Self {
         BoxedVNodeProducer::wrap(move |scope| {
             let mut vtag = VTag::new(vtag_prod.tag_type);
