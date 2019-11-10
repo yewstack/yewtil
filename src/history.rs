@@ -136,7 +136,7 @@ impl<T> History<T> {
     }
 }
 
-impl <T: PartialEq> History<T> {
+impl<T: PartialEq> History<T> {
     pub fn neq_set(&mut self, value: T) -> bool {
         if self.0[0] != value {
             self.set(value);

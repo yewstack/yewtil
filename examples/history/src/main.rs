@@ -23,12 +23,8 @@ impl Component for Model {
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
-            Msg::SetText(text) => {
-                self.text.neq_set(text)
-            }
-            Msg::Reset => {
-                self.text.reset()
-            }
+            Msg::SetText(text) => self.text.neq_set(text),
+            Msg::Reset => self.text.reset(),
             Msg::Forget => {
                 self.text.forget();
                 false
