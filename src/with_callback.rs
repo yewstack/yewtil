@@ -80,6 +80,7 @@ impl <T, MSG> Emissive for WithCallback<T, MSG> {
 }
 
 // TODO, the partialeq bound should not be needed.
+// This may not be easily acomplished due to coherence rules.
 //impl <T: PureComponent, MSG: 'static + PartialEq> PureComponent for WithCallback<T, MSG> {
 //    fn render(&self) -> Html<Pure<Self>> {
 //        self.data.render()
