@@ -1,18 +1,16 @@
 //! A Reference Counted Pointer optimized for use with Yew.
 
+use std::borrow::Borrow;
 use std::cell::Cell;
+use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::cmp::Ordering;
 use std::ops::Deref;
 use std::ptr::NonNull;
-use std::borrow::Borrow;
 
 use crate::ptr::takeable::Takeable;
 
 type IsZero = bool;
-
-
 
 // TODO consider renaming prev and next to new and old respectively.
 #[derive(PartialEq, Debug)]
@@ -88,7 +86,6 @@ unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<Node<T>>) {
     }
 }
 
-
 // TODO: missing methods
 //
 // These linking operations could possibly create cycles. - I'm not sure if they should be exposed - or if they are, tagged with unsafe.
@@ -99,8 +96,6 @@ unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<Node<T>>) {
 // unlink_next, unlink_prev - Unlinks the lrc from other linked lrcs.
 // into_raw - same as RC
 // from_raw - same as RC
-
-
 
 /// Linked List Reference Counted Pointer
 ///
@@ -272,7 +267,6 @@ impl<T> Lrc<T> {
             Err(self)
         }
     }
-
 
     /// Indicates that the `Lrc` has linked nodes that are newer than its head.
     pub fn has_prev(&self) -> bool {
@@ -497,7 +491,6 @@ impl<T> Lrc<T> {
         }
         count
     }
-
 
     /// Gets the number of nodes that are newer than the head.
     pub fn prev_len(&self) -> usize {

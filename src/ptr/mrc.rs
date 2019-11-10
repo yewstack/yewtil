@@ -1,12 +1,15 @@
-use crate::ptr::rc_box::{RcBox, try_unwrap, get_count, is_exclusive, get_mut_boxed_content, clone_impl, clone_inner, unwrap_clone, get_ref_boxed_content, decrement_and_possibly_deallocate};
+use crate::ptr::rc_box::{
+    clone_impl, clone_inner, decrement_and_possibly_deallocate, get_count, get_mut_boxed_content,
+    get_ref_boxed_content, is_exclusive, try_unwrap, unwrap_clone, RcBox,
+};
+use crate::ptr::Irc;
+use std::borrow::{Borrow, BorrowMut};
+use std::cmp::Ordering;
+use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::borrow::{Borrow, BorrowMut};
-use crate::ptr::Irc;
-use std::cmp::Ordering;
-use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
-use std::fmt;
 
 /// Mutable Reference Counted pointer
 ///
@@ -38,20 +41,17 @@ use std::fmt;
 /// assert_eq!(*clone, 10);
 /// assert_eq!(*mrc, 20);
 /// ```
-pub struct Mrc<T>{
+pub struct Mrc<T> {
     /// Pointer to the value and reference counter.
-    ptr: NonNull<RcBox<T>>
+    ptr: NonNull<RcBox<T>>,
 }
 
-
-impl <T> Mrc<T> {
+impl<T> Mrc<T> {
     /// Allocates a value behind a `Mrc` pointer.
     pub fn new(value: T) -> Self {
         let rc_box = RcBox::new(value);
         let ptr = rc_box.into_non_null();
-        Self {
-            ptr
-        }
+        Self { ptr }
     }
 
     /// Attempts to get a mutable reference to the wrapped value.
@@ -91,10 +91,9 @@ impl <T> Mrc<T> {
     /// let value = mrc.try_unwrap().expect("Should get value");
     /// ```
     pub fn try_unwrap(self) -> Result<T, Self> {
-        try_unwrap(self.ptr)
-            .map_err(|ptr|{
-                Self {ptr} // Recover the ptr
-            })
+        try_unwrap(self.ptr).map_err(|ptr| {
+            Self { ptr } // Recover the ptr
+        })
     }
 
     /// Gets the reference count of the `Mrc`.
@@ -148,9 +147,7 @@ impl <T> Mrc<T> {
     /// ```
     pub fn irc(&self) -> Irc<T> {
         get_ref_boxed_content(&self.ptr).inc_count();
-        Irc {
-            ptr: self.ptr
-        }
+        Irc { ptr: self.ptr }
     }
 
     /// Converts this Mrc into an Irc.
@@ -166,9 +163,7 @@ impl <T> Mrc<T> {
         // Because the Mrc is dropped, decrementing the count,
         // the count needs to be restored here.
         get_ref_boxed_content(&self.ptr).inc_count();
-        Irc {
-            ptr: self.ptr
-        }
+        Irc { ptr: self.ptr }
     }
 
     /// Checks pointers for equality.
@@ -184,10 +179,9 @@ impl <T> Mrc<T> {
     pub fn ptr_eq(lhs: &Self, rhs: &Self) -> bool {
         std::ptr::eq(lhs.ptr.as_ptr(), rhs.ptr.as_ptr())
     }
-
 }
 
-impl <T: Clone> Mrc<T> {
+impl<T: Clone> Mrc<T> {
     /// Returns a mutable reference to the value if it has exclusive access.
     /// If it does not have exclusive access, it will make a clone of the data to acquire exclusive access.
     ///
@@ -235,48 +229,45 @@ impl <T: Clone> Mrc<T> {
     }
 }
 
-
-impl <T> Drop for Mrc<T> {
+impl<T> Drop for Mrc<T> {
     fn drop(&mut self) {
-        unsafe{decrement_and_possibly_deallocate(self.ptr)}
+        unsafe { decrement_and_possibly_deallocate(self.ptr) }
     }
 }
 
-impl <T> Clone for Mrc<T> {
+impl<T> Clone for Mrc<T> {
     fn clone(&self) -> Self {
         Self {
-            ptr: clone_impl(self.ptr)
+            ptr: clone_impl(self.ptr),
         }
     }
 }
 
-impl <T: Clone> DerefMut for Mrc<T> {
+impl<T: Clone> DerefMut for Mrc<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.make_mut()
     }
 }
 
-
-impl <T: Clone> AsMut<T> for Mrc<T> {
+impl<T: Clone> AsMut<T> for Mrc<T> {
     fn as_mut(&mut self) -> &mut T {
         self.make_mut()
     }
 }
 
-impl <T: Clone> BorrowMut<T> for Mrc<T> {
+impl<T: Clone> BorrowMut<T> for Mrc<T> {
     fn borrow_mut(&mut self) -> &mut T {
         self.make_mut()
     }
 }
 
-
-impl <T> AsRef<T> for Mrc<T> {
+impl<T> AsRef<T> for Mrc<T> {
     fn as_ref(&self) -> &T {
         get_ref_boxed_content(&self.ptr).value.as_ref()
     }
 }
 
-impl <T> Deref for Mrc<T> {
+impl<T> Deref for Mrc<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -284,40 +275,39 @@ impl <T> Deref for Mrc<T> {
     }
 }
 
-impl <T> Borrow<T> for Mrc<T> {
+impl<T> Borrow<T> for Mrc<T> {
     fn borrow(&self) -> &T {
         self.as_ref()
     }
 }
 
-
-impl <T: PartialEq> PartialEq for Mrc<T> {
+impl<T: PartialEq> PartialEq for Mrc<T> {
     fn eq(&self, other: &Self) -> bool {
         self.as_ref().eq(other.as_ref())
     }
 }
 
-impl <T: Eq> Eq for Mrc<T> {}
+impl<T: Eq> Eq for Mrc<T> {}
 
-impl <T: PartialOrd> PartialOrd for Mrc<T> {
+impl<T: PartialOrd> PartialOrd for Mrc<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.as_ref().partial_cmp(other.as_ref())
     }
 }
 
-impl <T: Ord> Ord for Mrc<T> {
+impl<T: Ord> Ord for Mrc<T> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.as_ref().cmp(other.as_ref())
     }
 }
 
-impl <T: Hash> Hash for Mrc<T> {
+impl<T: Hash> Hash for Mrc<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.as_ref().hash(state)
     }
 }
 
-impl <T: fmt::Debug> fmt::Debug for Mrc<T> {
+impl<T: fmt::Debug> fmt::Debug for Mrc<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let rc_box = get_ref_boxed_content(&self.ptr);
         f.debug_struct("Irc")

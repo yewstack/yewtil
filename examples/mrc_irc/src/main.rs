@@ -1,4 +1,3 @@
-
 use yew::{html, Component, ComponentLink, Html, ShouldRender};
 use yewtil::ptr::Mrc;
 
@@ -7,7 +6,7 @@ use crate::child::Child;
 use yewtil::NeqAssign;
 
 pub struct Model {
-    text: Mrc<String>
+    text: Mrc<String>,
 }
 
 pub enum Msg {
@@ -20,7 +19,7 @@ impl Component for Model {
 
     fn create(_: Self::Properties, _: ComponentLink<Self>) -> Self {
         Model {
-            text: Mrc::new("".to_string())
+            text: Mrc::new("".to_string()),
         }
     }
 

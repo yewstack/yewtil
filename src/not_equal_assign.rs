@@ -1,7 +1,7 @@
 //! Module for `neq_assign` utility function.
 
-use yew::html::ShouldRender;
 use std::borrow::BorrowMut;
+use yew::html::ShouldRender;
 
 /// Blanket trait to provide a convenience method for assigning props in `changed` or updating values in `update`.
 pub trait NeqAssign<NEW> {

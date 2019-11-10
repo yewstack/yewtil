@@ -16,8 +16,7 @@ use std::ops::Deref;
 /// Prior values can be iterated over as well.
 pub struct History<T>(VecDeque<T>);
 
-impl <T> History<T> {
-
+impl<T> History<T> {
     /// Creates a new history wrapper.
     pub fn new(value: T) -> Self {
         let mut vec = VecDeque::new();
@@ -40,7 +39,6 @@ impl <T> History<T> {
     pub fn set(&mut self, value: T) {
         self.0.push_front(value)
     }
-
 
     /// Replaces the current value without creating a history entry.
     pub fn replace(&mut self, value: T) {
@@ -118,11 +116,13 @@ impl <T> History<T> {
 
     /// Gets the current value.
     pub fn into_inner(mut self) -> T {
-        self.0.pop_front().expect("History should have at least one item")
+        self.0
+            .pop_front()
+            .expect("History should have at least one item")
     }
 }
 
-impl <T> IntoIterator for History<T> {
+impl<T> IntoIterator for History<T> {
     type Item = T;
     type IntoIter = std::collections::vec_deque::IntoIter<T>;
 
@@ -131,15 +131,14 @@ impl <T> IntoIterator for History<T> {
     }
 }
 
-
-impl <T> AsRef<T> for History<T> {
+impl<T> AsRef<T> for History<T> {
     fn as_ref(&self) -> &T {
         // Get the first element
         &self.0[0]
     }
 }
 
-impl <T> Deref for History<T> {
+impl<T> Deref for History<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {

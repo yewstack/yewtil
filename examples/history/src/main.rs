@@ -2,13 +2,13 @@ use yew::{html, Component, ComponentLink, Html, ShouldRender};
 use yewtil::History;
 
 pub struct Model {
-    text: History<String>
+    text: History<String>,
 }
 
 pub enum Msg {
     SetText(String),
     Reset,
-    Forget
+    Forget,
 }
 
 impl Component for Model {
@@ -17,7 +17,7 @@ impl Component for Model {
 
     fn create(_: Self::Properties, _: ComponentLink<Self>) -> Self {
         Model {
-            text: History::new("".to_string())
+            text: History::new("".to_string()),
         }
     }
 
