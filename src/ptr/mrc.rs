@@ -3,12 +3,12 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::borrow::{Borrow, BorrowMut};
 use crate::ptr::Irc;
-use failure::_core::cmp::Ordering;
+use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::ptr::NonNull;
 use std::fmt;
 
-/// Mutable RC pointer
+/// Mutable Reference Counted pointer
 ///
 /// The `Mrc` has similar semantics to `std::rc::Rc` pointer,
 /// with notable differences that it does not support `Weak` pointers,
@@ -35,7 +35,7 @@ use std::fmt;
 /// let clone = mrc.clone();
 /// *mrc = 20; // This operation clones the value and allocates space for it.
 ///
-/// assert_eq!(*clone, 10, "Assigning to mrc won't alter cloned Mrcs");
+/// assert_eq!(*clone, 10);
 /// assert_eq!(*mrc, 20);
 /// ```
 pub struct Mrc<T>{
@@ -83,14 +83,11 @@ impl <T> Mrc<T> {
     /// ```
     /// use yewtil::ptr::Mrc;
     /// let mrc = Mrc::new(0);
-    /// dbg!(&mrc);
-    /// let clone = mrc.clone();
-    /// dbg!(&mrc);
     ///
+    /// let clone = mrc.clone();
     /// let mrc = mrc.try_unwrap().expect_err("Should not be able to unwrap");
-    /// dbg!(&mrc);
+    ///
     /// std::mem::drop(clone);
-    /// dbg!(&mrc);
     /// let value = mrc.try_unwrap().expect("Should get value");
     /// ```
     pub fn try_unwrap(self) -> Result<T, Self> {
@@ -101,6 +98,9 @@ impl <T> Mrc<T> {
     }
 
     /// Gets the reference count of the `Mrc`.
+    ///
+    /// An exclusive `Mrc` will have a count of `1`.
+    /// The count is incremented on any cloning action and is decremented when `drop` is called.
     ///
     /// # Example
     /// ```
@@ -224,10 +224,12 @@ impl <T: Clone> Mrc<T> {
         get_mut_boxed_content(&mut self.ptr).value.as_mut()
     }
 
+    /// Consumes the `Mrc` and returns the value from the `Mrc` if it is not shared
+    /// or clones the value if another `Mrc` or `Irc` has access to it.
     pub fn unwrap_clone(self) -> T {
         unwrap_clone(self.ptr)
     }
-    /// Clones the wrapped value at the `Lrc`'s head.
+    /// Clones the value wrapped by the `Mrc`..
     pub fn clone_inner(&self) -> T {
         clone_inner(self.ptr)
     }
@@ -317,6 +319,10 @@ impl <T: Hash> Hash for Mrc<T> {
 
 impl <T: fmt::Debug> fmt::Debug for Mrc<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        get_ref_boxed_content(&self.ptr).fmt(f)
+        let rc_box = get_ref_boxed_content(&self.ptr);
+        f.debug_struct("Irc")
+            .field("value", rc_box.value.as_ref())
+            .field("count", &rc_box.get_count())
+            .finish()
     }
 }
