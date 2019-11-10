@@ -10,6 +10,10 @@ Currently this crate supports two features.
 * `neq_assign` - makes assigning props and returning a relevant ShouldRender value easier.
 * Pure Components - implement pure components using two traits: `PureComponent` and `Emissive`, the latter of which can be derived in most cases. 
 This should make it much easier to define simple Components that don't hold state.
+* `Mrc`/`Irc` smart pointers - Rc-like pointers that are more ergonomic to use within Yew.
+* `Lrc` smart pointer - Rc-like pointer implemented on top of a linked list. Allows for novel state update mechanics 
+and traversal over linked shared pointers.
+* `History` - A wrapper that holds the history of values that have been assigned to it.
 
 ## Work In Progress Features
 * Function based DSL that can be used instead of the `html!` macro. 
@@ -18,7 +22,7 @@ This should make it much easier to define simple Components that don't hold stat
 Check out the [demo example](https://github.com/hgzimmerman/yewtil/tree/master/examples/demo) to see how Pure Components work.
 
 ## Example
-neq_assign:
+#### neq_assign:
 ```rust
 fn change(&mut self, props: Self::Properties) -> ShouldRender {
     self.props.neq_assign(props)
@@ -27,7 +31,7 @@ fn change(&mut self, props: Self::Properties) -> ShouldRender {
 
 -------------
 
-Pure Component:
+#### Pure Component:
 ```rust
 pub type Button = Pure<PureButton>;
 
@@ -44,28 +48,6 @@ impl PureComponent for PureButton {
             <button onclick=|_| Msg::DoIt>{ &self.text }</button>
         }
     }
-}
-```
-------
-
-Fetch wrapper:
-```rust
-html! {
-    <Fetch<String, Msg> state = &self.fetch_state, callback=From::from >
-        <Unloaded<Msg>>
-            <div> {"hello there"} </div>
-            <button onclick=|_| Msg::DataLoaded>{"Load Data"}</button>
-        </Unloaded>
-        <Fetching<Msg>>
-            {"Loading"}
-        </Fetching>
-        <Fetched<String, Msg>  render=Fetched::render(|data| html!{
-            <div> {data} </div>
-        })  />
-        <Failed<Msg>>
-          {"Couldn't get the data."}
-        </Failed>
-    </Fetch>
 }
 ```
 
