@@ -1,5 +1,5 @@
-use yew::{Callback, Properties};
-use crate::Emissive;
+use yew::{Callback, Properties, Html};
+use crate::{Emissive, PureComponent, Pure, PureEmissiveComponent};
 
 
 /// Helper struct for including callbacks in props.
@@ -78,3 +78,10 @@ impl <T, MSG> Emissive for WithCallback<T, MSG> {
         self.callback.emit(msg)
     }
 }
+
+// TODO, the partialeq bound should not be needed.
+//impl <T: PureComponent, MSG: 'static + PartialEq> PureComponent for WithCallback<T, MSG> {
+//    fn render(&self) -> Html<Pure<Self>> {
+//        self.data.render()
+//    }
+//}
