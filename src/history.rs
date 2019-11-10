@@ -8,7 +8,7 @@ use std::ops::Deref;
 // and the transitions can be rolled back.
 // That would probably have worse performance in exchange for smaller size.
 
-/// Keeps track of prior values.
+/// Wrapper that keeps track of prior values that have been assigned to it.
 ///
 /// It keeps values that have been `set` for it around for the duration of its lifetime,
 /// or until they are dropped by calling `reset` or `forget`.
@@ -34,20 +34,34 @@ impl<T> History<T> {
     ///# use yewtil::History;
     /// let mut history = History::new(0);
     /// history.set(1);
+    ///
     /// assert_eq!(*history, 1);
+    /// assert_eq!(history.count(), 2);
     /// ```
     pub fn set(&mut self, value: T) {
         self.0.push_front(value)
     }
 
     /// Replaces the current value without creating a history entry.
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::History;
+    /// let mut history = History::new(0);
+    /// history.replace(1);
+    ///
+    /// assert_eq!(*history, 1);
+    /// assert_eq!(history.count(), 1);
+    /// ```
     pub fn replace(&mut self, value: T) {
         self.0[0] = value;
     }
 
     /// Removes all prior values.
     ///
-    /// The returned bool indicates if any elements were removed.
+    /// This effectively sets a new "checkpoint" that can be restored by calling `reset`.
+    ///
+    /// The returned bool indicates if any entries were removed.
     ///
     /// # Example
     /// ```
@@ -69,9 +83,9 @@ impl<T> History<T> {
         }
     }
 
-    /// Remove all elements except the last one, making the oldest
+    /// Remove all elements except the last one, making the oldest entry the "current value".
     ///
-    /// The returned bool indicates if any elements were removed.
+    /// The returned bool indicates if any entries were removed.
     ///
     /// # Example
     /// ```
@@ -93,7 +107,7 @@ impl<T> History<T> {
         }
     }
 
-    /// Returns true if there is more than one element in the list.
+    /// Returns true if there is more than one entry in the history.
     ///
     /// # Example
     /// ```
@@ -108,7 +122,8 @@ impl<T> History<T> {
 
     /// Returns the number of entries in the history.
     ///
-    /// This will never be less than 1, as the first item is used
+    /// This will never be less than 1, as the first entry of the backing VecDeque is always occupied by the
+    /// "current value" in the `History` struct.
     ///
     /// # Example
     /// ```
@@ -137,8 +152,9 @@ impl<T> History<T> {
 }
 
 impl<T: PartialEq> History<T> {
-    /// Same as `set`, but will not actually if the first value is the same as the new one.
+    /// Will only `set` the value if the provided value is different than the current value.
     ///
+    /// It returns true to indicate if the history's current value was updated to be the provided value.
     /// # Example
     /// ```
     ///# use yewtil::History;

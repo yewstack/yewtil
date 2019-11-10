@@ -21,7 +21,7 @@ use std::ptr::NonNull;
 ///
 /// This makes `Irc`s ideal for passing around immutable views to data through components in Yew, as
 /// cloning the `Irc` itself is cheap, and the `Irc` guarantees that its data cannot be changed by
-/// some intermediate component.
+/// some intermediate component without obvious unwrap --> modify --> rewrap operations.
 pub struct Irc<T> {
     /// Pointer to the value and reference counter.
     pub(crate) ptr: NonNull<RcBox<T>>,
