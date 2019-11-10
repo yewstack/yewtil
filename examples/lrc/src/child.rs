@@ -1,5 +1,6 @@
-
-use yew::{html, Component, ComponentLink, Html, ShouldRender, Callback, events::InputData, Properties};
+use yew::{
+    events::InputData, html, Callback, Component, ComponentLink, Html, Properties, ShouldRender,
+};
 use yewtil::lrc::Lrc;
 use yewtil::NeqAssign;
 
@@ -8,16 +9,16 @@ pub struct Props {
     #[props(required)]
     pub text: Lrc<String>,
     #[props(required)]
-    pub callback: Callback<()>
+    pub callback: Callback<()>,
 }
 
 pub struct Child {
-    props: Props
+    props: Props,
 }
 
 pub enum Msg {
     UpdateText(InputData),
-    SendCallback
+    SendCallback,
 }
 
 impl Component for Child {
@@ -25,9 +26,7 @@ impl Component for Child {
     type Properties = Props;
 
     fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
-        Child {
-            props
-        }
+        Child { props }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
@@ -47,7 +46,6 @@ impl Component for Child {
     fn change(&mut self, props: Self::Properties) -> ShouldRender {
         self.props.neq_assign(props)
     }
-
 
     fn view(&self) -> Html<Self> {
         html! {

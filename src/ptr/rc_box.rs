@@ -1,25 +1,21 @@
+use crate::ptr::takeable::Takeable;
+use crate::ptr::IsZero;
 use std::cell::Cell;
 use std::ptr::NonNull;
-use crate::ptr::IsZero;
-use crate::ptr::takeable::Takeable;
-
 
 #[derive(Debug)]
 pub(crate) struct RcBox<T> {
     pub(crate) value: Takeable<T>,
-    count: Cell<usize>
+    count: Cell<usize>,
 }
 
-
-
 /// The boxed content used in Irc and Mrc.
-impl <T> RcBox<T> {
-
+impl<T> RcBox<T> {
     #[inline]
     pub(crate) fn new(value: T) -> Self {
         Self {
             value: Takeable::new(value),
-            count: Cell::new(1)
+            count: Cell::new(1),
         }
     }
 
@@ -56,7 +52,6 @@ impl <T> RcBox<T> {
     pub(crate) fn is_exclusive(&self) -> bool {
         self.get_count() == 1
     }
-
 }
 
 #[inline]
@@ -66,7 +61,6 @@ pub(crate) unsafe fn decrement_and_possibly_deallocate<T>(node: NonNull<RcBox<T>
         std::ptr::drop_in_place(node.as_ptr());
     }
 }
-
 
 #[inline(always)]
 pub(crate) fn get_mut_boxed_content<T>(ptr: &mut NonNull<RcBox<T>>) -> &mut RcBox<T> {

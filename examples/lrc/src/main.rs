@@ -5,7 +5,7 @@ mod child;
 use crate::child::Child;
 
 pub struct Model {
-    text: Lrc<String>
+    text: Lrc<String>,
 }
 
 pub enum Msg {
@@ -18,15 +18,13 @@ impl Component for Model {
 
     fn create(_: Self::Properties, _: ComponentLink<Self>) -> Self {
         Model {
-            text: Lrc::new("".to_string())
+            text: Lrc::new("".to_string()),
         }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
-            Msg::UpdateTextAtADistance => {
-                self.text.update()
-            }
+            Msg::UpdateTextAtADistance => self.text.update(),
         }
     }
 
@@ -34,7 +32,7 @@ impl Component for Model {
         html! {
             <>
                 <div>
-                   {self.text.as_ref()} // This implicit clone is cheap, as it doesn't copy the String
+                   {&*self.text}
                 </div>
                 // Either of the children's update buttons will cause this component's text
                 // to update to the most recently edited text.

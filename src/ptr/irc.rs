@@ -1,10 +1,13 @@
-use std::ops::Deref;
-use crate::ptr::rc_box::{RcBox, decrement_and_possibly_deallocate, get_ref_boxed_content, is_exclusive, get_count, try_unwrap, clone_inner, unwrap_clone, clone_impl};
-use std::ptr::NonNull;
+use crate::ptr::rc_box::{
+    clone_impl, clone_inner, decrement_and_possibly_deallocate, get_count, get_ref_boxed_content,
+    is_exclusive, try_unwrap, unwrap_clone, RcBox,
+};
 use std::borrow::Borrow;
 use std::cmp::Ordering;
-use std::hash::{Hash, Hasher};
 use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::ops::Deref;
+use std::ptr::NonNull;
 
 /// Immutable Reference Counted pointer.
 ///
@@ -21,17 +24,15 @@ use std::fmt;
 /// some intermediate component.
 pub struct Irc<T> {
     /// Pointer to the value and reference counter.
-    pub(crate) ptr: NonNull<RcBox<T>>
+    pub(crate) ptr: NonNull<RcBox<T>>,
 }
 
-impl <T> Irc<T> {
+impl<T> Irc<T> {
     /// Allocates the value behind an `Irc` pointer.
     pub fn new(value: T) -> Self {
         let rc_box = RcBox::new(value);
         let ptr = rc_box.into_non_null();
-        Self {
-            ptr
-        }
+        Self { ptr }
     }
 
     /// Tries to extract the value from the `Irc`, returning the `Irc` if there is one or
@@ -49,10 +50,9 @@ impl <T> Irc<T> {
     /// let value = irc.try_unwrap().expect("Should get value");
     /// ```
     pub fn try_unwrap(self) -> Result<T, Self> {
-        try_unwrap(self.ptr)
-            .map_err(|ptr|{
-                Self {ptr} // Recover the ptr
-            })
+        try_unwrap(self.ptr).map_err(|ptr| {
+            Self { ptr } // Recover the ptr
+        })
     }
 
     /// Gets the reference count of the `Irc`.
@@ -93,9 +93,7 @@ impl <T> Irc<T> {
     }
 }
 
-
-impl <T: Clone> Irc<T> {
-
+impl<T: Clone> Irc<T> {
     /// Unwraps the value from the `Irc`, cloning the value instead if another `Irc` or `Mrc` points
     /// to the same value.
     pub fn unwrap_clone(self) -> T {
@@ -107,29 +105,27 @@ impl <T: Clone> Irc<T> {
     }
 }
 
-
-
-impl <T> Drop for Irc<T> {
+impl<T> Drop for Irc<T> {
     fn drop(&mut self) {
-        unsafe{decrement_and_possibly_deallocate(self.ptr)}
+        unsafe { decrement_and_possibly_deallocate(self.ptr) }
     }
 }
 
-impl <T> Clone for Irc<T> {
+impl<T> Clone for Irc<T> {
     fn clone(&self) -> Self {
         Self {
-            ptr: clone_impl(self.ptr)
+            ptr: clone_impl(self.ptr),
         }
     }
 }
 
-impl <T> AsRef<T> for Irc<T> {
+impl<T> AsRef<T> for Irc<T> {
     fn as_ref(&self) -> &T {
         get_ref_boxed_content(&self.ptr).value.as_ref()
     }
 }
 
-impl <T> Deref for Irc<T> {
+impl<T> Deref for Irc<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -137,40 +133,39 @@ impl <T> Deref for Irc<T> {
     }
 }
 
-impl <T> Borrow<T> for Irc<T> {
+impl<T> Borrow<T> for Irc<T> {
     fn borrow(&self) -> &T {
         self.as_ref()
     }
 }
 
-
-impl <T: PartialEq> PartialEq for Irc<T> {
+impl<T: PartialEq> PartialEq for Irc<T> {
     fn eq(&self, other: &Self) -> bool {
         self.as_ref().eq(other.as_ref())
     }
 }
 
-impl <T: Eq> Eq for Irc<T> {}
+impl<T: Eq> Eq for Irc<T> {}
 
-impl <T: PartialOrd> PartialOrd for Irc<T> {
+impl<T: PartialOrd> PartialOrd for Irc<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.as_ref().partial_cmp(other.as_ref())
     }
 }
 
-impl <T: Ord> Ord for Irc<T> {
+impl<T: Ord> Ord for Irc<T> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.as_ref().cmp(other.as_ref())
     }
 }
 
-impl <T: Hash> Hash for Irc<T> {
+impl<T: Hash> Hash for Irc<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.as_ref().hash(state)
     }
 }
 
-impl <T: fmt::Debug> fmt::Debug for Irc<T> {
+impl<T: fmt::Debug> fmt::Debug for Irc<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let rc_box = get_ref_boxed_content(&self.ptr);
         f.debug_struct("Irc")
@@ -179,8 +174,6 @@ impl <T: fmt::Debug> fmt::Debug for Irc<T> {
             .finish()
     }
 }
-
-
 
 #[cfg(test)]
 mod test {

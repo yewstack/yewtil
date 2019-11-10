@@ -1,7 +1,8 @@
-
-use yew::{html, Component, ComponentLink, Html, ShouldRender, Callback, events::InputData, Properties};
-use yewtil::NeqAssign;
+use yew::{
+    events::InputData, html, Callback, Component, ComponentLink, Html, Properties, ShouldRender,
+};
 use yewtil::ptr::Irc;
+use yewtil::NeqAssign;
 
 #[derive(PartialEq, Properties)]
 pub struct Props {
@@ -11,11 +12,11 @@ pub struct Props {
     /// This heavily implies the only way to update the text field is to send a message back
     /// to the parent to have the parent component update it.
     #[props(required)]
-    pub callback: Callback<String>
+    pub callback: Callback<String>,
 }
 
 pub struct Child {
-    props: Props
+    props: Props,
 }
 
 pub enum Msg {
@@ -27,9 +28,7 @@ impl Component for Child {
     type Properties = Props;
 
     fn create(props: Self::Properties, _: ComponentLink<Self>) -> Self {
-        Child {
-            props
-        }
+        Child { props }
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
@@ -44,7 +43,6 @@ impl Component for Child {
     fn change(&mut self, props: Self::Properties) -> ShouldRender {
         self.props.neq_assign(props)
     }
-
 
     fn view(&self) -> Html<Self> {
         html! {
