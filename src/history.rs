@@ -137,6 +137,18 @@ impl<T> History<T> {
 }
 
 impl<T: PartialEq> History<T> {
+    /// Same as `set`, but will not actually if the first value is the same as the new one.
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::History;
+    /// let mut history = History::new(0);
+    /// let did_set = history.neq_set(0);
+    /// assert!(!did_set);
+    ///
+    /// let did_set = history.neq_set(1);
+    /// assert!(did_set);
+    /// ```
     pub fn neq_set(&mut self, value: T) -> bool {
         if self.0[0] != value {
             self.set(value);
