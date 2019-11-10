@@ -32,7 +32,7 @@ impl Component for Model {
         html! {
             <>
                 <div>
-                   {self.text.as_ref()} // This implicit clone is cheap, as it doesn't copy the String
+                   {&*self.text}
                 </div>
                 // Either of the children's update buttons will cause this component's text
                 // to update to the most recently edited text.

@@ -40,7 +40,7 @@ impl Component for Model {
         html! {
             <>
                 <div>
-                   {&*self.text} // This implicit clone is cheap, as it doesn't copy the String
+                   {&*self.text}
                 </div>
                 <div>
                     <input
