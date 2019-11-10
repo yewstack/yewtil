@@ -9,6 +9,11 @@ use std::ops::Deref;
 // That would probably have worse performance in exchange for smaller size.
 
 /// Keeps track of prior values.
+///
+/// It keeps values that have been `set` for it around for the duration of its lifetime,
+/// or until they are dropped by calling `reset` or `forget`.
+///
+/// Prior values can be iterated over as well.
 pub struct History<T>(VecDeque<T>);
 
 impl <T> History<T> {
@@ -36,12 +41,10 @@ impl <T> History<T> {
         self.0.push_front(value)
     }
 
-    // TODO, maybe remove this, hist.set(create_new_value(hist)) is acceptable enough.
-    /// Use a reference to the current value to determine what the next value will be.
-    pub fn alter<F: Fn(&T)->T>(&mut self, f: F) {
-        let current= self.as_ref();
-        let value= f(current);
-        self.set(value)
+
+    /// Replaces the current value without creating a history entry.
+    pub fn replace(&mut self, value: T) {
+        self.0[0] = value;
     }
 
     /// Removes all prior values.
@@ -111,6 +114,11 @@ impl <T> History<T> {
     /// Produces an iterator over references to history items ordered from newest to oldest.
     pub fn iter(&self) -> std::collections::vec_deque::Iter<T> {
         self.0.iter()
+    }
+
+    /// Gets the current value.
+    pub fn into_inner(mut self) -> T {
+        self.0.pop_front().expect("History should have at least one item")
     }
 }
 
