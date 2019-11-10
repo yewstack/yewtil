@@ -15,8 +15,6 @@ This should make it much easier to define simple Components that don't hold stat
 and traversal over linked shared pointers.
 * `History` - A wrapper that holds the history of values that have been assigned to it.
 
-## Work In Progress Features
-* Function based DSL that can be used instead of the `html!` macro. 
 
 ## Demo
 Check out the [demo example](https://github.com/hgzimmerman/yewtil/tree/master/examples/demo) to see how Pure Components work.
@@ -46,6 +44,27 @@ impl PureComponent for PureButton {
     fn render(&self) -> VNode<Pure<Self>> {
         html! {
             <button onclick=|_| Msg::DoIt>{ &self.text }</button>
+        }
+    }
+}
+```
+
+--------------
+
+#### History
+```rust
+pub struct Model {
+    text: History<String>,
+}
+
+// ...
+fn update(&mut self, msg: Self::Message) -> ShouldRender {
+    match msg {
+        Msg::SetText(text) => self.text.neq_set(text),
+        Msg::Reset => self.text.reset(),
+        Msg::Forget => {
+            self.text.forget();
+            false
         }
     }
 }

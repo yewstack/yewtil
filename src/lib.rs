@@ -9,6 +9,6 @@ mod history;
 
 pub use history::History;
 pub use not_equal_assign::NeqAssign;
-pub use pure::{Emissive, Pure, PureComponent};
+pub use pure::{Emissive, Pure, PureComponent, PureEmissiveComponent};
 
 pub use yewtil_macro::Emissive;
