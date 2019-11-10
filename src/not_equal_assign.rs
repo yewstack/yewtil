@@ -1,9 +1,10 @@
 //! Module for `neq_assign` utility function.
 
+use std::borrow::BorrowMut;
 use yew::html::ShouldRender;
 
 /// Blanket trait to provide a convenience method for assigning props in `changed` or updating values in `update`.
-pub trait NeqAssign {
+pub trait NeqAssign<NEW> {
     /// If `self` and `new` aren't equal, assigns `new` to `self` and returns true, otherwise returns false.
     ///
     /// Short for "Not equal assign".
@@ -43,13 +44,13 @@ pub trait NeqAssign {
     ///     }
     ///  }
     /// ```
-    fn neq_assign(&mut self, new: Self) -> ShouldRender;
+    fn neq_assign(&mut self, new: NEW) -> ShouldRender;
 }
 
-impl<T: PartialEq> NeqAssign for T {
-    fn neq_assign(&mut self, new: T) -> ShouldRender {
-        if self != &new {
-            *self = new;
+impl<T: BorrowMut<U>, U: PartialEq> NeqAssign<U> for T {
+    fn neq_assign(&mut self, new: U) -> bool {
+        if self.borrow() != &new {
+            *self.borrow_mut() = new;
             true
         } else {
             false

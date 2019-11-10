@@ -19,5 +19,8 @@ members = [
     "crates/yewtil-macro",
     "examples/demo",
     "examples/fetch_demo",
-    "examples/dsl"
+    "examples/dsl",
+    "examples/lrc",
+    "examples/history",
+    "examples/mrc_irc"
 ]
