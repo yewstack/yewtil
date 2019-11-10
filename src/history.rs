@@ -1,18 +1,19 @@
 use std::collections::VecDeque;
 use std::ops::Deref;
 
-// TODO when const generics lands, it would be useful to add a usize type parameter over the max
-// number of elements.
+// TODO when const generics lands, it would be useful to add a usize type parameter over the max number of elements.
 
 // It would also be interesting to see if a diffing history implementation could be built over types
 // that can represent themselves as diffs - where reversible transitions can be recorded instead of values
 // and the transitions can be rolled back.
+// That would probably have worse performance in exchange for smaller size.
 
 /// Keeps track of prior values.
 pub struct History<T>(VecDeque<T>);
 
 impl <T> History<T> {
 
+    /// Creates a new history wrapper.
     pub fn new(value: T) -> Self {
         let mut vec = VecDeque::new();
         vec.push_front(value);
@@ -23,6 +24,14 @@ impl <T> History<T> {
     ///
     /// This pushes the new value into the front of a list,
     /// where the front-most value represents the most recent value.
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::history::History;
+    /// let mut history = History::new(0);
+    /// history.set(1);
+    /// assert_eq!(*history, 1);
+    /// ```
     pub fn set(&mut self, value: T) {
         self.0.push_front(value)
     }
@@ -36,18 +45,67 @@ impl <T> History<T> {
     }
 
     /// Removes all prior values.
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::history::History;
+    /// let mut history = History::new(0);
+    /// history.set(1);
+    /// history.set(2);
+    ///
+    /// history.forget();
+    /// assert_eq!(*history, 2);
+    /// assert_eq!(history.count(), 1);
+    /// ```
     pub fn forget(&mut self) {
         self.0.drain(1..);
     }
 
     /// Remove all elements except the last one, making the oldest
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::history::History;
+    /// let mut history = History::new(0);
+    /// history.set(1);
+    /// history.set(2);
+    ///
+    /// history.reset();
+    /// assert_eq!(*history, 0);
+    /// assert_eq!(history.count(), 1);
+    /// ```
     pub fn reset(&mut self) {
         self.0.drain(..self.0.len() - 1);
     }
 
     /// Returns true if there is more than one element in the list.
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::history::History;
+    /// let mut history = History::new(0);
+    /// history.set(1);
+    /// assert!(history.dirty());
+    /// ```
     pub fn dirty(&mut self) -> bool {
-        self.0.len() > 1
+        self.count() > 1
+    }
+
+    /// Returns the number of entries in the history.
+    ///
+    /// This will never be less than 1, as the first item is used
+    ///
+    /// # Example
+    /// ```
+    ///# use yewtil::history::History;
+    /// let mut history = History::new(0);
+    /// assert_eq!(history.count(), 1);
+    ///
+    /// history.set(1);
+    /// assert_eq!(history.count(), 2);
+    /// ```
+    pub fn count(&self) -> usize {
+        self.0.len()
     }
 
     /// Produces an iterator over references to history items ordered from newest to oldest.
