@@ -1,25 +1,13 @@
 [package]
-name = "yewtil"
+name = "mrc_irc"
 version = "0.1.0"
 authors = ["Henry Zimmerman <zimhen7@gmail.com>"]
 edition = "2018"
-description = "Utility crate for Yew"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 yew = { git = "https://github.com/yewstack/yew", branch="master" }
-yewtil-macro = {path = "crates/yewtil-macro"}
+yewtil = {path="../.."}
+web_logger = "0.2.0"
 log = "0.4.8"
-failure = "0.1.5"
-
-
-[workspace]
-members = [
-    "crates/yewtil-macro",
-    "examples/demo",
-    "examples/fetch_demo",
-    "examples/dsl",
-    "examples/lrc",
-    "examples/mrc_irc"
-]

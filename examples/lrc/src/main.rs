@@ -1,5 +1,5 @@
 use yew::{html, Component, ComponentLink, Html, ShouldRender};
-use yewtil::lrc::Lrc;
+use yewtil::ptr::Lrc;
 
 mod child;
 use crate::child::Child;
