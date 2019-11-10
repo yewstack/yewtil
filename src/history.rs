@@ -27,7 +27,7 @@ impl <T> History<T> {
     ///
     /// # Example
     /// ```
-    ///# use yewtil::history::History;
+    ///# use yewtil::History;
     /// let mut history = History::new(0);
     /// history.set(1);
     /// assert_eq!(*history, 1);
@@ -48,7 +48,7 @@ impl <T> History<T> {
     ///
     /// # Example
     /// ```
-    ///# use yewtil::history::History;
+    ///# use yewtil::History;
     /// let mut history = History::new(0);
     /// history.set(1);
     /// history.set(2);
@@ -65,7 +65,7 @@ impl <T> History<T> {
     ///
     /// # Example
     /// ```
-    ///# use yewtil::history::History;
+    ///# use yewtil::History;
     /// let mut history = History::new(0);
     /// history.set(1);
     /// history.set(2);
@@ -82,7 +82,7 @@ impl <T> History<T> {
     ///
     /// # Example
     /// ```
-    ///# use yewtil::history::History;
+    ///# use yewtil::History;
     /// let mut history = History::new(0);
     /// history.set(1);
     /// assert!(history.dirty());
@@ -97,7 +97,7 @@ impl <T> History<T> {
     ///
     /// # Example
     /// ```
-    ///# use yewtil::history::History;
+    ///# use yewtil::History;
     /// let mut history = History::new(0);
     /// assert_eq!(history.count(), 1);
     ///
