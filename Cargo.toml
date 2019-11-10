@@ -22,4 +22,5 @@ members = [
     "examples/dsl",
     "examples/lrc",
     "examples/history",
+    "examples/mrc_irc"
 ]
