@@ -1,3 +1,4 @@
+//! Smart pointers for use within Yew.
 mod irc;
 mod lrc;
 mod mrc;
