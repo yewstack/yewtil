@@ -1,4 +1,7 @@
 //! Smart pointers for use within Yew.
+//!
+//! These all offer similar semantics to `std::rc::Rc`, but offer better ergonomics within Yew,
+//! or functionality not available in `Rc`.
 mod irc;
 mod lrc;
 mod mrc;

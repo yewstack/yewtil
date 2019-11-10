@@ -1,3 +1,4 @@
+//! Utility library for the Yew frontend web framework.
 //pub mod fetch;
 pub mod dsl;
 mod not_equal_assign;

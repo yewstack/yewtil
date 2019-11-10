@@ -14,7 +14,7 @@ pub trait NeqAssign<NEW> {
     /// # use yew::{Component, ShouldRender, ComponentLink};
     /// # use yewtil::NeqAssign;
     /// # use yew::Properties;
-    /// use yew::virtual_dom::VNode;
+    ///# use yew::virtual_dom::VNode;
     /// ##[derive(Properties, PartialEq)]
     ///  struct Props {
     ///     field1: String,
@@ -38,10 +38,10 @@ pub trait NeqAssign<NEW> {
     ///     fn change(&mut self, props: Self::Properties) -> ShouldRender{
     ///         self.props.neq_assign(props)
     ///     }
-    ///
-    /// fn view(&self) -> VNode<Self> {
-    ///         unimplemented!()
-    ///     }
+    ///#
+    ///#     fn view(&self) -> VNode<Self> {
+    ///#         unimplemented!()
+    ///#     }
     ///  }
     /// ```
     fn neq_assign(&mut self, new: NEW) -> ShouldRender;

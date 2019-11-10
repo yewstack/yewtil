@@ -21,10 +21,17 @@ use std::ptr::NonNull;
 /// This should make it just slightly more size efficient and performant than `Rc`,
 /// and should be more ergonomic to use than `Rc` given that you can mutably
 /// assign to it without much ceremony.
+///
 /// Passing `Irc` pointers to children guarantee that no intermediate component can modify the value
 /// behind the pointer.
 /// This makes it ideal for passing around configuration data where some components can ergonomicly
 /// "modify" and cheaply pass the pointers back to parent components, while other components can only read it.
+///
+/// # Note
+/// Assigning to an `Mrc` within Yew when you have passed shared copies of the ptr to child components,
+/// will always end up cloning the value stored in the `Mrc`. `Rc` makes this performance cost explicit,
+/// by making you use `Rc::make_mut()`. Because cloning is unavoidable in the context it was designed for,
+/// `Mrc` opts to provide nicer ergonomics around assignment.
 ///
 /// # Example
 /// ```

@@ -4,9 +4,9 @@ use yew::{Component, ComponentLink, Html, Properties, ShouldRender};
 use yew::virtual_dom::VNode;
 
 
-/// Convenience trait that allows the expression of a pure component.
+/// Allows immutable components to be declared using a single struct and two methods.
 ///
-/// This trait defers to the implementor instead of `Emissive` where you can specify how to send messages.
+/// This trait defers to its own message handling function versus using the `Emissive` trait like `PureComponent` does.
 ///
 /// If you pass more than one `Callback` as props, then the `Emissive` derive macro will only handle the first.
 /// While you could just implement Emissive manually, this trait facilitates keeping all your pure component
@@ -15,8 +15,11 @@ use yew::virtual_dom::VNode;
 /// This trait is blanket implemented for any `T: PureComponent + Emissive`, and is used with the `Pure`
 /// wrapper component.
 pub trait PureEmissiveComponent: Properties + PartialEq + Sized + 'static {
+    /// The message to handled.
     type Message;
+    /// Renders self to `Html`.
     fn render(&self) -> Html<Pure<Self>>;
+    /// Sends a message.
     fn send_message(&self, _msg: Self::Message) {}
 }
 
@@ -32,12 +35,13 @@ impl <T> PureEmissiveComponent for T where T: PureComponent + Emissive {
     }
 }
 
-/// Convenience trait that allows simple components to be declared using only its properties struct and a single method.
+/// Allows immutable components to be declared using a single struct and a single method.
 pub trait PureComponent: Properties + Emissive + PartialEq + Sized + 'static {
+    /// Renders self to `Html`.
     fn render(&self) -> Html<Pure<Self>>;
 }
 
-/// Derivable trait used to simplify pure components.
+/// Derivable trait used to simplify calling callbacks in pure components.
 ///
 /// This trait is responsible for automating calling emit on a callback passed via props within types
 /// that implement `PureComponent`.
@@ -56,10 +60,11 @@ pub trait Emissive {
 /// Wrapper component for pure components.
 ///
 /// Due to constraints in Rust's coherence rules, `Component` can't be implemented for any `T` that implements
-/// `PureComponent`, so instead this Struct wraps a `T: PureComponent` and performs the actions required to
-/// facilitate working pure components.
+/// `PureComponent`, so instead this struct wraps a `T: PureComponent` and `Component` is implemented
+/// for this instead.
 ///
-/// It is reasonable practice to use `Pure` as a prefix or `Impl` as a suffix to your pure component Model/Props
+/// # Example
+/// It is reasonable practice to use `Pure` as a prefix or `Impl` as a suffix to your pure component model
 /// and use an alias to provide a terser name to be used by other components:
 ///
 /// ```
