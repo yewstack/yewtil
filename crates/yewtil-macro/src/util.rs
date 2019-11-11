@@ -1,3 +1,4 @@
+/// Given a type, inspect it to find the inner type if the wrapping type is a `Callback`
 pub(crate) fn extract_type_from_callback(ty: &syn::Type) -> Option<&syn::Type> {
     use syn::{GenericArgument, Path, PathArguments, PathSegment};
 
@@ -8,7 +9,7 @@ pub(crate) fn extract_type_from_callback(ty: &syn::Type) -> Option<&syn::Type> {
         }
     }
 
-    fn extract_option_segment(path: &Path) -> Option<&PathSegment> {
+    fn extract_callback_segment(path: &Path) -> Option<&PathSegment> {
         let idents_of_path = path
             .segments
             .iter()
@@ -25,7 +26,7 @@ pub(crate) fn extract_type_from_callback(ty: &syn::Type) -> Option<&syn::Type> {
     }
 
     extract_type_path(ty)
-        .and_then(|path| extract_option_segment(path))
+        .and_then(|path| extract_callback_segment(path))
         .and_then(|pair_path_segment| {
             let type_params = &pair_path_segment.arguments;
             // It should have only on angle-bracketed param ("<String>"):
