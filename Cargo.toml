@@ -7,9 +7,34 @@ description = "Utility crate for Yew"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+# Only stable is included by default.
+default = ["stable"]
+# Broad features
+all = ["stable", "experimental"]
+## These all features MUST be stable or experimental
+stable = ["neq", "pure", "history", "mrc_irc"]
+experimental = ["dsl", "lrc", "with_callback" ]
+
+
+# Some pointers are stable, some experimental.
+# This makes sure you get all the pointers
+ptr = ["lrc", "mrc_irc"]
+
+# Misc features
+neq = []
+pure = ["neq", "yewtil-macro"]
+with_callback = []
+history = []
+dsl = []
+
+# Ptr features
+lrc = []
+mrc_irc = []
+
 [dependencies]
 yew = { git = "https://github.com/yewstack/yew", branch="master" }
-yewtil-macro = {path = "crates/yewtil-macro"}
+yewtil-macro = {path = "crates/yewtil-macro", optional=true}
 log = "0.4.8"
 failure = "0.1.5"
 
