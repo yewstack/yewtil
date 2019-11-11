@@ -28,7 +28,7 @@ impl fmt::Debug for CallbackField {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CallbackField")
             .field("name", &self.name)
-            .field("message_ty", &self.message_ty)
+//            .field("message_ty", &self.message_ty.)
             .finish()
     }
 }
