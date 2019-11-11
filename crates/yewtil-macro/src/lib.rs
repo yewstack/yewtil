@@ -11,7 +11,6 @@ use syn::{parse_macro_input, DeriveInput, Error, Field, Type};
 mod util;
 use util::extract_type_from_callback;
 use std::fmt;
-use syn::export::Formatter;
 
 #[proc_macro_derive(Emissive, attributes(props))]
 pub fn emissive(tokens: TokenStream) -> TokenStream {
