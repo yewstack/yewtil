@@ -75,8 +75,13 @@ This crate will target stable Yew.
 
 As new idioms are introduced to Yew, this crate may see updates, but given the rarity of those, this crate may sit unaltered for some time.
 
-Minor bugfixes or Yew breakage fixes will result in a minor version bump.
-Additional features will increment the patch version.
-This crate will reach 1.0.0 when Yew itself does.
+## Scoping
+This crate aims to be more permissive in what is allowed in than Yew, so if you have a function, type, or trait you would like to share, please open a PR or Issue.
 
-This crate aims to be more permissive in what is allowed in than Yew, so if you have a function or trait you would like to share, please open a PR or Issue.
+Components are welcome as well, but they must not have external dependencies, should solve some problem encountered my many users of Yew, and should allow for theming if possible, like an auto-scrolling wrapper, a RecyclerView/Infinite-scrolling component, or possibly a comprehensive Input component.
+
+Common UI elements like modals or dropdowns should probably best be left to CSS-framework component libraries, as they should often be coupled to the external CSS used to display them.
+
+### Stability
+Since this crate aims to present a variety of helper types, traits, and functions, where the utility of each may be unknown at the time the feature is added, newer additions may be not be included in the default feature-set, and may be locked behind an `experimental` flag. 
+While in early development, features marked as `experimental` may be changed more frequently or even entirely removed, while those marked as `stable` will not be removed and can be depended on to not change significantly.
