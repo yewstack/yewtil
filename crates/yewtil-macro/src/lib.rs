@@ -10,6 +10,8 @@ use syn::{parse_macro_input, DeriveInput, Error, Field, Type};
 
 mod util;
 use util::extract_type_from_callback;
+use std::fmt;
+use syn::export::Formatter;
 
 #[proc_macro_derive(Emissive, attributes(props))]
 pub fn emissive(tokens: TokenStream) -> TokenStream {
@@ -17,10 +19,18 @@ pub fn emissive(tokens: TokenStream) -> TokenStream {
     TokenStream::from(input.into_token_stream())
 }
 
-//#[derive(Debug)]
 struct CallbackField {
     name: Ident,
     message_ty: Type,
+}
+
+impl fmt::Debug for CallbackField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CallbackField")
+            .field("name", &self.name)
+            .field("message_ty", &self.message_ty)
+            .finish()
+    }
 }
 
 impl TryFrom<Field> for CallbackField {
