@@ -42,8 +42,8 @@ failure = "0.1.5"
 [workspace]
 members = [
     "crates/yewtil-macro",
-    "examples/demo",
-    "examples/fetch_demo",
+    "examples/pure_component",
+#    "examples/fetch_demo",
     "examples/dsl",
     "examples/lrc",
     "examples/history",

@@ -1,23 +1,30 @@
 # Yewtil
-Utility crate for the Yew web framework.
+Utility crate for the [Yew](https://github.com/yewstack/yew) frontend web framework.
 
 ## Purpose
 Provide a place for commonly used utilities for Yew to reside without them having to be included in the Yew crate itself.
 As a consequence of this, the Yew crate is free to make changes that may cause breakages in this crate.
 
 ## Features
-Currently this crate supports two features.
+Currently, this crate supports these features in a stable capacity:
 * `neq_assign` - makes assigning props and returning a relevant ShouldRender value easier.
 * Pure Components - implement pure components using two traits: `PureComponent` and `Emissive`, the latter of which can be derived in most cases. 
-This should make it much easier to define simple Components that don't hold state.
+This should make it much easier to define simple components that don't hold state.
 * `Mrc`/`Irc` smart pointers - Rc-like pointers that are more ergonomic to use within Yew.
-* `Lrc` smart pointer - Rc-like pointer implemented on top of a linked list. Allows for novel state update mechanics 
-and traversal over linked shared pointers.
 * `History` - A wrapper that holds the history of values that have been assigned to it.
 
+This crate also has an experimental feature flag that enables the following features:
+* `Lrc` smart pointer - Rc-like pointer implemented on top of a linked list. Allows for novel state update mechanics 
+and traversal over linked shared pointers. <sup><sub>(This needs to be fuzz tested to make sure it doesn't leak.)</sub></sup>
+* `WithCallback` - A wrapper around props to make handing out sections of a large monolithic state object require less duplicate code. <sup><sub>(Can't be used with pure components due to orphan rules.)</sub></sup>
+* DSL for `Html<Self>` - A function-based domain-specific-language for Yew that can be used in a limited capacity instead of the `html!` macro. <sup><sub>(Unfinished. May not be able to represent some constructs possible in html!)</sub></sup>
 
-## Demo
-Check out the [demo example](https://github.com/hgzimmerman/yewtil/tree/master/examples/demo) to see how Pure Components work.
+These experimental features are either not sufficiently vetted, may change significantly, or may be removed.
+
+## Example Projects 
+Examples for every stable feature exist [here](https://github.com/hgzimmerman/yewtil/tree/master/examples). 
+
+Check out the [Pure Components example](https://github.com/hgzimmerman/yewtil/tree/master/examples/demo) to see how Pure Components work.
 
 ## Example
 #### neq_assign:
