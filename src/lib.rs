@@ -10,6 +10,7 @@ mod not_equal_assign;
 #[cfg(feature = "pure")]
 mod pure;
 
+mod with_callback;
 
 #[cfg(any(feature = "mrc_irc", feature = "lrc"))]
 pub mod ptr;
@@ -25,6 +26,8 @@ pub use not_equal_assign::NeqAssign;
 
 #[cfg(feature = "pure")]
 pub use pure::{Emissive, Pure, PureComponent, PureEmissiveComponent};
+
+pub use with_callback::WithCallback;
 
 #[cfg(feature = "pure")]
 pub use yewtil_macro::Emissive;
