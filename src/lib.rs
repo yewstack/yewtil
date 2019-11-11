@@ -1,5 +1,4 @@
 //! Utility library for the Yew frontend web framework.
-//pub mod fetch;
 
 #[cfg(feature = "dsl")]
 pub mod dsl;

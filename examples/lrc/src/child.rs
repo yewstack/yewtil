@@ -1,7 +1,7 @@
 use yew::{
     events::InputData, html, Callback, Component, ComponentLink, Html, Properties, ShouldRender,
 };
-use yewtil::lrc::Lrc;
+use yewtil::ptr::Lrc;
 use yewtil::NeqAssign;
 
 #[derive(PartialEq, Properties)]
