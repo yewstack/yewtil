@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Henry Zimmerman <zimhen7@gmail.com>"]
 edition = "2018"
 description = "Utility crate for Yew"
+license = "MIT/Apache"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
