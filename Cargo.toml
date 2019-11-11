@@ -4,7 +4,8 @@ version = "0.1.0"
 authors = ["Henry Zimmerman <zimhen7@gmail.com>"]
 edition = "2018"
 description = "Utility crate for Yew"
-license = "MIT/Apache"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/yewstack/yewtil"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -34,10 +35,11 @@ lrc = []
 mrc_irc = []
 
 [dependencies]
-yew = { git = "https://github.com/yewstack/yew", branch="master" }
-yewtil-macro = {path = "crates/yewtil-macro", optional=true}
+#yew = { git = "https://github.com/yewstack/yew", branch="master" }
+yew = "0.10.0"
+yewtil-macro = {path = "crates/yewtil-macro", version="0.1.0", optional=true}
 log = "0.4.8"
-failure = "0.1.5"
+failure = "0.1.6"
 
 
 [workspace]
