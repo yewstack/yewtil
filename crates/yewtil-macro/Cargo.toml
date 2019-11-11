@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Henry Zimmerman <zimhen7@gmail.com>"]
 edition = "2018"
 license = "MIT/Apache"
+description = "Macros to be re-exported from the yewtil crate"
 
 [lib]
 proc-macro = true
