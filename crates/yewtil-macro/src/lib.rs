@@ -17,7 +17,7 @@ pub fn emissive(tokens: TokenStream) -> TokenStream {
     TokenStream::from(input.into_token_stream())
 }
 
-#[derive(Debug)]
+//#[derive(Debug)]
 struct CallbackField {
     name: Ident,
     message_ty: Type,
