@@ -1,471 +1,278 @@
-use crate::fetch::canceled::{Canceled, CanceledProps};
-use crate::fetch::failed::{Failed, FailedProps};
-use crate::fetch::fetched::{Fetched, FetchedProps};
-use crate::fetch::fetching::{Fetching, FetchingProps};
-use crate::fetch::persist_canceled::PersistCanceled;
-use crate::fetch::persist_failed::{PersistFailed, PersistFailedProps};
-use crate::fetch::persist_fetching::{PersistFetching, PersistFetchingProps};
-use crate::fetch::unloaded::{Unloaded, UnloadedProps};
-use std::rc::Rc;
-use yew::html::ChildrenRenderer;
-use yew::services::fetch::FetchTask;
-use yew::virtual_dom::vcomp::ScopeHolder;
-use yew::virtual_dom::VChild;
-use yew::{
-    virtual_dom::{VComp, VNode},
-    Callback, Component, ComponentLink, Html, Properties, ShouldRender,
-};
-use std::fmt;
+//! Feature to enable fetching using web_sys-based fetch requests.
+//!
+//! Bodies will be serialized to JSON.
+//!
+//! # Note
+//! Because this makes use of futures, enabling this feature will require the use of a
+//! wasm-pack build environment and will prevent you from using `cargo web`.
 
-pub mod canceled;
-pub mod failed;
-pub mod fetched;
-pub mod fetching;
-pub mod persist_canceled;
-pub mod persist_failed;
-pub mod persist_fetching;
-pub mod unloaded;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 
-/// The state of a fetch request.
-#[derive(Clone, Debug, PartialEq)]
-pub struct FetchState<T> {
-    variant: FetchStateVariant<T>
+use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
+use wasm_bindgen_futures::JsFuture;
+use web_sys::{Request, RequestInit, RequestMode, Response, Window};
+use crate::NeqAssign;
+
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum FetchState<T> {
+    NotFetching,
+    Fetching,
+    Success(T),
+    Failed(FetchError),
 }
 
-/// All permutations of the various states a fetch request can be in.
-#[derive(Clone)]
-enum FetchStateVariant<T> {
-    Unloaded,
-    Fetching(Rc<FetchTask>),
-    Failed(Rc<::failure::Error>),
-    Canceled,
-    Fetched(Option<Rc<T>>),
-    PersistFetching(Option<Rc<T>>, Rc<FetchTask>),
-    PersistFailed(Option<Rc<T>>, Rc<::failure::Error>),
-    PersistCanceled(Option<Rc<T>>),
-}
-
-// TODO remove this when FetchTask gets Debug implemented for it.
-impl <T: fmt::Debug> fmt::Debug for FetchStateVariant<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("FetchStateVariant")
+impl <T> Default for FetchState<T> {
+    fn default() -> Self {
+        FetchState::NotFetching
     }
 }
 
-impl<T> PartialEq for FetchStateVariant<T> {
-    fn eq(&self, other: &Self) -> bool {
-        use FetchStateVariant as FS;
-        match (self, other) {
-            (FS::Unloaded, FS::Unloaded)
-            | (FS::Fetching(_), FS::Fetching(_))
-            | (FS::Canceled, FS::Canceled) => true,
-            _ => false,
+impl <T> FetchState<T> {
+    pub fn success(&self) -> Option<&T> {
+        match self {
+            FetchState::Success(value) => Some(value),
+            _ => None
         }
     }
-}
 
-impl<T: Clone> FetchState<T> {
-    // TODO consider handing out weak pointers instead of other RCs to the child components, so get_mut can work instead of having to clone _every_time_.
-    // There will likely have to be a WeakFetchState version used by this lib, and only obtainable via calling a method on the FetchState.
-    // Clone will have to be removed for FetchState, and will be replaced with this get_weak() method.
-    //
-    // The problem with a weak version of this is that if the parent changes, but doesn't re-render,
-    // then child components won't get access to the data anymore.
-    // This poses the problem of allowing users to shoot themselves in the foot if they don't read the docs,
-    // especially if this is the only way to do this.
-    // Ideally, the child components could be generic over either Strong or Weak RCs -  preserving the ability to "clone" the parent FetchStateVariant,
-    // but that would be kinda hard to implement.
-    // Maybe a Strong/Weak enum? and have strong() and weak() items?
-    pub fn make_mut(&mut self) -> Option<&mut T> {
-        match &mut self.variant {
-            FetchStateVariant::Fetched(Some(data))
-            | FetchStateVariant::PersistFetching(Some(data), _)
-            | FetchStateVariant::PersistFailed(Some(data), _)
-            | FetchStateVariant::PersistCanceled(Some(data)) => Some(Rc::make_mut(data)),
-            _ => None,
+    /// Gets the value out of the fetch state if it is a `Success` variant.
+    pub fn unwrap(self) -> T {
+        if let FetchState::Success(value) = self {
+            value
+        } else {
+            panic!("Could not unwrap value of FetchState");
+        }
+    }
+
+    /// Transforms the FetchState into another FetchState using the given function.
+    pub fn map<U, F: Fn(T)-> U>(self, f: F ) -> FetchState<U> {
+        match self {
+            FetchState::NotFetching => FetchState::NotFetching,
+            FetchState::Fetching => FetchState::NotFetching,
+            FetchState::Success(t) => FetchState::Success(f(t)),
+            FetchState::Failed(e) => FetchState::Failed(e)
+        }
+    }
+
+    pub fn alter<F: Fn(&mut T)>(&mut self, f: F) {
+        match self {
+            FetchState::Success(t) => f(t),
+            _ => {}
+        }
+    }
+
+    pub fn as_ref(&self) -> FetchState<&T>  {
+        match self {
+            FetchState::NotFetching => FetchState::NotFetching,
+            FetchState::Fetching => FetchState::NotFetching,
+            FetchState::Success(t) => FetchState::Success(t),
+            FetchState::Failed(e) => FetchState::Failed(e.clone())
         }
     }
 }
 
-impl<T> FetchState<T> {
-    pub fn get(&self) -> Option<&T> {
-        match &self.variant {
-            FetchStateVariant::Fetched(Some(data))
-            | FetchStateVariant::PersistFetching(Some(data), _)
-            | FetchStateVariant::PersistFailed(Some(data), _)
-            | FetchStateVariant::PersistCanceled(Some(data)) => Some(data.as_ref()),
-            _ => None,
+impl <T: PartialEq> FetchState<T> {
+    /// Sets the fetch state to be fetching.
+    /// If it wasn't already in a fetch state, it will return `true`,
+    /// to indicate that the component should re-render.
+    pub fn set_fetching(&mut self) -> bool {
+        self.neq_assign(FetchState::Fetching)
+    }
+}
+
+
+// TODO add remaining HTTP methods.
+/// An enum representing what method to use for the request,
+/// as well as a body if the method is able to have a body.
+pub enum MethodBody<'a, T> {
+    Head,
+    Get,
+    Delete,
+    Post(&'a T),
+    Put(&'a T),
+    Patch(&'a T)
+}
+
+impl <'a, T> MethodBody<'a, T> {
+    pub fn as_method(&self) -> &'static str {
+        match self {
+            MethodBody::Get => "GET",
+            MethodBody::Delete => "DELETE",
+            MethodBody::Post(_) => "POST",
+            MethodBody::Put(_) => "PUT",
+            MethodBody::Patch(_) => "PATCH",
+            MethodBody::Head => "HEAD",
         }
     }
+}
 
-    /// Creates an unleaded state.
-    pub fn unloaded() -> Self {
-        FetchState {
-            variant: FetchStateVariant::Unloaded
-        }
-    }
-
-    /// Creates a fetching state.
-    pub fn fetching(task: FetchTask) -> Self {
-        FetchState {
-            variant: FetchStateVariant::Fetching(Rc::new(task))
-        }
-    }
-
-    /// Creates a fetched state.
-    pub fn fetched(data: T) -> Self {
-        FetchState {
-            variant: FetchStateVariant::Fetched(Some(Rc::new(data)))
-        }
-    }
-
-    pub fn failed(error: ::failure::Error) -> Self {
-        FetchState {
-            variant: FetchStateVariant::Failed(Rc::new(error))
-        }
-    }
-
-    pub fn canceled() -> Self {
-        FetchState {
-            variant: FetchStateVariant::Canceled
-        }
-
-    }
-
-    // TODO consider making this take Self, task -> Self
-    /// Will keep the old data around, while a new task is fetched.
-    pub fn persist_fetching(&mut self, task: FetchTask) -> ShouldRender {
-        match &mut self.variant {
-            FetchStateVariant::Fetched(data)
-            | FetchStateVariant::PersistFetching(data, _)
-            | FetchStateVariant::PersistFailed(data, _)
-            | FetchStateVariant::PersistCanceled(data) => {
-                let data = data.take();
-                assert!(data.is_some());
-                self.variant = FetchStateVariant::PersistFetching(data, Rc::new(task));
+impl <'a, T: Serialize> MethodBody<'a, T> {
+    pub fn as_body(&self) -> Result<Option<JsValue>, FetchError> {
+        let body: Option<String> = match self {
+            MethodBody::Get
+            | MethodBody::Delete
+            | MethodBody::Head => None,
+            MethodBody::Put(data)
+            | MethodBody::Post(data)
+            | MethodBody::Patch(data) => {
+                let body = serde_json::to_string(data)
+                    .map_err(|_| FetchError::CouldNotSerializeRequestBody)?;
+                Some(body)
             }
-            _ => {
-                self.variant = FetchStateVariant::Fetching(Rc::new(task));
+        };
+
+        let body = body
+            .map(|data| JsValue::from_str(data.as_str()));
+        Ok(body)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum FetchError {
+    /// The response could not be deserialized.
+    DeserializeError{error: String, content: String},
+    /// The response had an error code.
+    ResponseError{status_code: u16, response_body: String},
+    /// Text was not available on the response.
+    // TODO, this might get thrown in unexpected circumstances.
+    TextNotAvailable,
+    /// The Fetch Future could not be created due to a misconfiguration.
+    CouldNotCreateFetchFuture,
+    /// The request could cont be created due to a misconfiguration.
+    CouldNotCreateRequest(JsValue),
+    /// Could not serialize the request body.
+    CouldNotSerializeRequestBody
+}
+
+impl std::fmt::Display for FetchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FetchError::DeserializeError {error, content} => {
+                f.write_str(&format!("Could not deserialize a successful request. With error: {}, and content: {}", error, content))
             }
-        }
-        true
-    }
-
-    pub fn persist_failed(&mut self, error: ::failure::Error) -> ShouldRender {
-        match &mut self.variant {
-            FetchStateVariant::Fetched(data)
-            | FetchStateVariant::PersistFetching(data, _)
-            | FetchStateVariant::PersistFailed(data, _)
-            | FetchStateVariant::PersistCanceled(data) => {
-                let data = data.take();
-                assert!(data.is_some());
-                self.variant = FetchStateVariant::PersistFailed(data, Rc::new(error));
+            FetchError::ResponseError { status_code, response_body} => {
+                f.write_str(&format!("The server returned a response with code: {}, and body: {}", status_code, response_body))
             }
-            _ => {
-                self.variant = FetchStateVariant::Failed(Rc::new(error));
+            FetchError::TextNotAvailable => {
+                f.write_str("The text could not be extracted from the response.")
             }
-        }
-        true
-    }
-
-    pub fn persist_canceled(&mut self) -> ShouldRender {
-        match &mut self.variant {
-            FetchStateVariant::Fetched(data)
-            | FetchStateVariant::PersistFetching(data, _)
-            | FetchStateVariant::PersistFailed(data, _)
-            | FetchStateVariant::PersistCanceled(data) => {
-                let data = data.take();
-                assert!(data.is_some());
-                self.variant = FetchStateVariant::PersistCanceled(data);
+            FetchError::CouldNotCreateFetchFuture => {
+                f.write_str("Could not create a fetch future.")
             }
-            _ => {
-                self.variant = FetchStateVariant::Canceled;
+            FetchError::CouldNotCreateRequest(_) => {
+                f.write_str("Could not create a fetch request.")
             }
-        }
-        true
-    }
-
-    pub fn unwrap(self) -> Rc<T> {
-        match self.variant {
-            FetchStateVariant::Fetched(data)
-            | FetchStateVariant::PersistFetching(data, _)
-            | FetchStateVariant::PersistFailed(data, _)
-            | FetchStateVariant::PersistCanceled(data) => data.unwrap(),
-            _ => panic!("Tried to unwrap Fetch state where no data was present."),
-        }
-    }
-}
-
-////////////////////////
-
-#[derive(Properties)]
-pub struct Fetch<T: 'static, M: 'static> {
-    pub children: ChildrenRenderer<FetchVariant<T, M>>,
-    #[props(required)]
-    pub state: FetchState<T>,
-    pub callback: Option<Callback<M>>,
-}
-
-impl<T: 'static, M: 'static> Component for Fetch<T, M> {
-    type Message = M;
-    type Properties = Fetch<T, M>;
-
-    fn create(props: Self::Properties, _link: ComponentLink<Self>) -> Self {
-        props
-    }
-
-    fn update(&mut self, msg: Self::Message) -> bool {
-        if let Some(callback) = &self.callback {
-            callback.emit(msg)
-        }
-        true
-    }
-
-    fn change(&mut self, props: Self::Properties) -> ShouldRender {
-        *self = props;
-        true
-    }
-
-    fn view(&self) -> VNode<Self> {
-        match &self.state.variant {
-            FetchStateVariant::Unloaded => self.view_unloaded(),
-            FetchStateVariant::Fetching(_) => self.view_fetching(),
-            FetchStateVariant::Failed(error) => self.view_failed(&error),
-            FetchStateVariant::Canceled => self.view_canceled(),
-            FetchStateVariant::Fetched(data) => self.view_fetched(data.as_ref().unwrap()),
-            FetchStateVariant::PersistFetching(data, _) => {
-                self.view_persist_fetching(data.as_ref().unwrap())
-            }
-            FetchStateVariant::PersistFailed(data, error) => self.view_persist_failed(data.as_ref().unwrap(), &error),
-            FetchStateVariant::PersistCanceled(data) => self.view_persist_canceled(data.as_ref().unwrap()),
-        }
-    }
-}
-
-
-impl<T, M: 'static> Fetch<T, M> {
-    fn view_unloaded(&self) -> Html<Self> {
-        self.children
-            .iter()
-            .filter_map(move |mut x| {
-                if let Variants::Unloaded(ref mut unloaded) = x.props {
-                    unloaded.callback = self.callback.clone();
-                    Some(x)
-                } else {
-                    None
-                }
-            })
-            .next() // Get only the first
-            .into_iter()
-            .collect()
-    }
-
-    fn view_fetching(&self) -> Html<Self> {
-        self.children
-            .iter()
-            .filter_map(move |mut x| {
-                if let Variants::Fetching(ref mut fetching) = x.props {
-                    fetching.callback = self.callback.clone();
-                    Some(x)
-                } else {
-                    None
-                }
-            })
-            .next() // Get only the first
-            .into_iter()
-            .collect() // Won't show anything if not specified.
-    }
-
-    fn view_failed(&self, error: &Rc<::failure::Error>) -> Html<Self> {
-        self.children
-            .iter()
-            .filter_map(move |mut x| {
-                if let Variants::Failed(ref mut failed) = x.props {
-                    failed.callback = self.callback.clone();
-                    failed.error = Some(error.clone());
-                    Some(x)
-                } else {
-                    None
-                }
-            })
-            .next() // Get only the first
-            .into_iter()
-            .collect()
-    }
-
-    fn view_canceled(&self) -> Html<Self> {
-        self.children
-            .iter()
-            .filter_map(move |mut x| {
-                if let Variants::Canceled(ref mut canceled) = x.props {
-                    canceled.callback = self.callback.clone();
-                    Some(x)
-                } else {
-                    None
-                }
-            })
-            .next() // Get only the first
-            .into_iter()
-            .collect()
-    }
-
-    fn view_fetched(&self, data: &Rc<T>) -> Html<Self> {
-        self.children
-            .iter()
-            .filter_map(move |mut x| {
-                if let Variants::Fetched(ref mut fetched) = x.props {
-                    fetched.data = Some(data.clone());
-                    fetched.callback = self.callback.clone();
-                    Some(x)
-                } else {
-                    None
-                }
-            })
-            .next() // Get only the first
-            .into_iter()
-            .collect()
-    }
-
-    fn view_persist_fetching(&self, data: &Rc<T>) -> Html<Self> {
-        self.children
-            .iter()
-            .filter_map(move |mut x| {
-                if let Variants::PersistFetching(ref mut fetched) = x.props {
-                    fetched.data = Some(data.clone());
-                    fetched.callback = self.callback.clone();
-                    Some(x)
-                } else {
-                    None
-                }
-            })
-            .next() // Get only the first
-            .map(|v| v.into())
-            .unwrap_or_else(|| self.view_fetching())
-    }
-
-    fn view_persist_failed(&self, data: &Rc<T>, error: &Rc<::failure::Error>) -> Html<Self> {
-        self.children
-            .iter()
-            .filter_map(move |mut x| {
-                if let Variants::PersistFailed(ref mut failed) = x.props {
-                    failed.data = Some(data.clone());
-                    failed.error = Some(error.clone());
-                    failed.callback = self.callback.clone();
-                    Some(x)
-                } else {
-                    None
-                }
-            })
-            .next()
-            .map(|v| v.into())
-            .unwrap_or_else(|| self.view_failed(error)) // Default to viewing the failed case if no PersistFailed case is supplied
-    }
-
-    fn view_persist_canceled(&self, data: &Rc<T>) -> Html<Self> {
-        self.children
-            .iter()
-            .filter_map(move |mut x| {
-                if let Variants::PersistCanceled(ref mut canceled) = x.props {
-                    canceled.data = Some(data.clone());
-                    canceled.callback = self.callback.clone();
-                    Some(x)
-                } else {
-                    None
-                }
-            })
-            .next()
-            .map(|v| v.into())
-            .unwrap_or_else(|| self.view_canceled()) // Default to viewing the canceled case if no PersistCanceled case is supplied
-    }
-}
-
-pub enum Variants<T: 'static, M: 'static> {
-    Unloaded(<Unloaded<M> as Component>::Properties),
-    Fetching(<Fetching<M> as Component>::Properties),
-    Failed(<Failed<M> as Component>::Properties),
-    Fetched(<Fetched<T, M> as Component>::Properties),
-    Canceled(<Canceled<M> as Component>::Properties),
-    PersistFetching(<PersistFetching<T, M> as Component>::Properties),
-    PersistFailed(<PersistFailed<T, M> as Component>::Properties),
-    PersistCanceled(<PersistCanceled<T, M> as Component>::Properties),
-}
-
-impl<T, M: 'static> From<UnloadedProps<M>> for Variants<T, M> {
-    fn from(props: UnloadedProps<M>) -> Self {
-        Variants::Unloaded(props)
-    }
-}
-
-impl<T, M: 'static> From<FetchingProps<M>> for Variants<T, M> {
-    fn from(props: FetchingProps<M>) -> Self {
-        Variants::Fetching(props)
-    }
-}
-
-impl<T, M: 'static> From<FailedProps<M>> for Variants<T, M> {
-    fn from(props: FailedProps<M>) -> Self {
-        Variants::Failed(props)
-    }
-}
-
-impl<T, M: 'static> From<CanceledProps<M>> for Variants<T, M> {
-    fn from(props: CanceledProps<M>) -> Self {
-        Variants::Canceled(props)
-    }
-}
-impl<T, M: 'static> From<FetchedProps<T, M>> for Variants<T, M> {
-    fn from(props: FetchedProps<T, M>) -> Self {
-        Variants::Fetched(props)
-    }
-}
-
-impl<T, M: 'static> From<PersistFetchingProps<T, M>> for Variants<T, M> {
-    fn from(props: PersistFetchingProps<T, M>) -> Self {
-        Variants::PersistFetching(props)
-    }
-}
-
-impl<T, M: 'static> From<PersistFailedProps<T, M>> for Variants<T, M> {
-    fn from(props: PersistFailedProps<T, M>) -> Self {
-        Variants::PersistFailed(props)
-    }
-}
-
-pub struct FetchVariant<T: 'static, M: 'static> {
-    props: Variants<T, M>,
-    scope: ScopeHolder<Fetch<T, M>>,
-}
-
-impl<CHILD, T: 'static, M: 'static> From<VChild<CHILD, Fetch<T, M>>> for FetchVariant<T, M>
-where
-    CHILD: Component,
-    CHILD::Properties: Into<Variants<T, M>>,
-{
-    fn from(vchild: VChild<CHILD, Fetch<T, M>>) -> Self {
-        FetchVariant {
-            props: vchild.props.into(),
-            scope: vchild.scope,
-        }
-    }
-}
-
-impl<T, M: 'static> Into<VNode<Fetch<T, M>>> for FetchVariant<T, M> {
-    fn into(self) -> VNode<Fetch<T, M>> {
-        match self.props {
-            Variants::Unloaded(props) => VComp::new::<Unloaded<M>>(props, self.scope).into(),
-            Variants::Fetching(props) => VComp::new::<Fetching<M>>(props, self.scope).into(),
-            Variants::Failed(props) => VComp::new::<Failed<M>>(props, self.scope).into(),
-            Variants::Canceled(props) => VComp::new::<Canceled<M>>(props, self.scope).into(),
-            Variants::Fetched(props) => VComp::new::<Fetched<T, M>>(props, self.scope).into(),
-            Variants::PersistFetching(props) => {
-                VComp::new::<PersistFetching<T, M>>(props, self.scope).into()
-            }
-            Variants::PersistFailed(props) => {
-                VComp::new::<PersistFailed<T, M>>(props, self.scope).into()
-            }
-            Variants::PersistCanceled(props) => {
-                VComp::new::<PersistCanceled<T, M>>(props, self.scope).into()
+            FetchError::CouldNotSerializeRequestBody => {
+                f.write_str("Could not serialize the body in the fetch request.")
             }
         }
     }
+}
+
+impl std::error::Error for FetchError {
+
+}
+
+/// Trait used to declare how a fetch request shall be made using a type.
+pub trait FetchRequest {
+    /// The Request Body (if any).
+    type RequestBody: Serialize;
+    /// The Response Body (if any).
+    type ResponseBody: DeserializeOwned;
+
+    /// The URL of the resource to fetch.
+    fn url(&self) -> String;
+
+    /// The HTTP method and body (if any) to be used in constructing the request.
+    fn method(&self) -> MethodBody<Self::RequestBody>;
+
+    /// The headers to attach to the request .
+    fn headers(&self) -> Vec<(String, String)>;
+
+    /// Use CORS for the request. By default, it will not.
+    fn use_cors(&self) -> bool {
+        false
+    }
+}
+
+/// Fetch a resource, returning a result of the expected response,
+/// or an error indicating what went wrong.
+pub async fn fetch_resource<T: FetchRequest>(request: T) -> Result<T::ResponseBody, FetchError> {
+    let method = request.method();
+    let headers = request.headers();
+    let headers = JsValue::from_serde(&headers).expect("Convert Headers to Tuple");
+
+    // configure options for the request
+    let mut opts = RequestInit::new();
+    opts.method(method.as_method());
+    opts.body(method.as_body()?.as_ref());
+    opts.headers(&headers);
+
+    // TODO, see if there are more options that can be specified.
+    if request.use_cors() {
+        opts.mode(RequestMode::Cors);
+    }
+
+    // Create the request
+    let request = Request::new_with_str_and_init(
+        &request.url(),
+        &opts,
+    )
+        .map_err(|e| FetchError::CouldNotCreateRequest(e))?; // TODO make this a Rust value instead.
+
+
+    // Send the request, resolving it to a response.
+    let window: Window = web_sys::window().unwrap();
+    let resp_value = JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|_| FetchError::CouldNotCreateFetchFuture)?;
+    debug_assert!(resp_value.is_instance_of::<Response>());
+    let resp: Response = resp_value.dyn_into().unwrap();
+
+
+    // Process the response
+    let text = JsFuture::from(resp.text().map_err(|_| FetchError::TextNotAvailable)?)
+        .await
+        .map_err(|_| FetchError::TextNotAvailable)?;
+
+    let text_string = text.as_string().unwrap();
+
+    // If the response isn't ok, then return an error without trying to deserialize.
+    if !resp.ok() {
+        return Err(FetchError::ResponseError {status_code: resp.status(), response_body: text_string})
+    }
+
+    let deserialized = serde_json::from_str(&text_string)
+        .map_err(|e| {
+            FetchError::DeserializeError{error: e.to_string(), content: text_string}
+        })?;
+
+    Ok(deserialized)
+}
+
+/// Performs a fetch and then resolves the fetch to a message by way of using two provided Fns to
+/// convert the success and failure cases.
+///
+/// This is useful if you want to handle the success case and failure case separately.
+pub async fn fetch_to_msg<T: FetchRequest, Msg>(request: T, success: impl Fn(T::ResponseBody) -> Msg, failure: impl Fn(FetchError) -> Msg) -> Msg {
+    fetch_resource(request)
+        .await
+        .map(success)
+        .unwrap_or_else(failure)
+}
+
+/// Performs a fetch and resolves the fetch to a message by converting a FetchState into the Message
+/// by way of a provided closure.
+///
+/// This is useful if you just want to update a FetchState in your model based on the result of your request.
+pub async fn fetch_to_state_msg<T: FetchRequest, Msg>(request: T, to_msg: impl Fn(FetchState<T::ResponseBody>) -> Msg) -> Msg {
+    let fetch_state = match fetch_resource(request).await {
+        Ok(response) => FetchState::Success(response),
+        Err(err) => FetchState::Failed(err)
+    };
+
+    to_msg(fetch_state)
 }
