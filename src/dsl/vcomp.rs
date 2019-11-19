@@ -7,7 +7,7 @@ pub struct VCompProducer<COMP: Component>(Box<dyn FnOnce(ScopeHolder<COMP>) -> V
 
 impl<COMP: Component> VCompProducer<COMP> {
     pub fn new<CHILD: Component>(props: CHILD::Properties) -> Self {
-        /// TODO allow getting the noderef as a parameter somewhere.
+        // TODO allow getting the noderef as a parameter somewhere.
         VCompProducer(Box::new(move |scope| VComp::new::<CHILD>(props, scope, NodeRef::default())))
     }
 }
