@@ -34,3 +34,6 @@ pub use yewtil_macro::Emissive;
 
 #[cfg(feature = "with_callback")]
 pub use with_callback::WithCallback;
+
+#[cfg(feature = "fetch")]
+pub mod fetch;
