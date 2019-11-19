@@ -250,6 +250,13 @@ impl<T> Clone for Mrc<T> {
     }
 }
 
+
+impl <T: Default> Default for Mrc<T> {
+    fn default() -> Self {
+        Mrc::new(T::default())
+    }
+}
+
 impl<T: Clone> DerefMut for Mrc<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.make_mut()
