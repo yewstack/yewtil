@@ -37,3 +37,6 @@ pub use with_callback::WithCallback;
 
 #[cfg(feature = "fetch")]
 pub mod fetch;
+
+#[cfg(feature = "future")]
+pub mod future;
