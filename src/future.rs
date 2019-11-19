@@ -3,6 +3,7 @@ use yew::{ComponentLink, Component};
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::future_to_promise;
 
+/// Trait that allows you to use `ComponentLink`s to register futures.
 pub trait ComponentLinkFuture {
     type Message;
     /// This method processes a Future that returns a message and sends it back to the component's
