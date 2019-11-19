@@ -51,7 +51,7 @@ serde = {version= "1.0.102", optional = true}
 serde_json = { version = "1.0.41", optional = true }
 
 [dependencies.web-sys]
-version = "0.3.30"
+version = "0.3.31"
 optional = true
 features = [
   'Headers',
