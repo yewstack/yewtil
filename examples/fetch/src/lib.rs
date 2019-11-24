@@ -110,6 +110,7 @@ fn render_employee(e: &Employee) -> Html<Model> {
                 {"Age: "}
                 {&e.employee_age}
             </div>
+            <br/>
         </div>
     }
 }
