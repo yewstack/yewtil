@@ -74,5 +74,6 @@ members = [
     "examples/dsl",
     "examples/lrc",
     "examples/history",
-    "examples/mrc_irc"
+    "examples/mrc_irc",
+    "examples/effect"
 ]
