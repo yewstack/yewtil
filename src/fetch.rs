@@ -15,32 +15,301 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response, Window};
 use crate::NeqAssign;
 
+pub type DidChange = bool;
+
+
+// TODO what might make sense would be to change the current name of FetchState to FetchAction.
+// And have FetchState3 just be named Fetch or FetchState.
+// A message resolved from a fetch future would produce a FetchAction,
+// and the fetch action would be applied against an existing fetch state, yielding a should render bool.
+// Fetch actions could still be used to hold data in a model,
+// but using a fetch state would allow you to organize your requests and responses better.
+
+
+pub type AcquireFetchState<T> = Fetch<(), T>;
+pub type ModifyFetchState<T> = Fetch<T, T>;
+
+
+/// Represents the state of a request, response pair that are used in fetch requests.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Fetch<REQ, RES> {
+    NotFetching(REQ, Option<RES>),
+    Fetching(REQ, Option<RES>),
+    Fetched(REQ, RES),
+    Failed(REQ, Option<RES>, FetchError)
+}
+
+impl <REQ: Default, RES> Default for Fetch<REQ, RES> {
+    fn default() -> Self {
+        Fetch::new(REQ::default())
+    }
+}
+
+impl <REQ: Default, RES: PartialEq> Fetch<REQ, RES> {
+
+    pub fn set_fetched(&mut self, res: RES) -> DidChange {
+        let will_change = match self {
+            Fetch::Fetched(_, old_res) => {
+                &res == old_res
+            },
+            _ => true
+        };
+
+        // TODO replace this with std::mem::take when it stabilizes.
+        let old = std::mem::replace(self, Fetch::default());
+        let new = old.fetched(res);
+        std::mem::replace(self, new);
+
+        will_change
+    }
+
+    pub fn apply(&mut self, action: FetchAction<RES>) -> DidChange {
+        match action {
+            FetchAction::NotFetching => self.set_not_fetching(),
+            FetchAction::Fetching => self.set_fetching(),
+            FetchAction::Success(res) => self.set_fetched(res),
+            FetchAction::Failed(err) => self.set_failed(err),
+        }
+    }
+}
+
+
+impl <REQ: Default, RES> Fetch<REQ, RES> {
+
+    pub fn set_not_fetching(&mut self) -> DidChange {
+        let will_change = self.discriminant_differs(&Fetch::NotFetching(REQ::default(), None));
+
+        let old = std::mem::replace(self, Fetch::default());
+        let new = old.not_fetching();
+        std::mem::replace(self, new);
+
+        will_change
+    }
+
+    pub fn set_fetching(&mut self) -> DidChange {
+        let will_change = self.discriminant_differs(&Fetch::Fetching(REQ::default(), None));
+
+        let old = std::mem::replace(self, Fetch::default());
+        let new = old.fetching();
+        std::mem::replace(self, new);
+
+        will_change
+    }
+
+    pub fn set_failed(&mut self, err: FetchError) -> DidChange {
+        let will_change = match self {
+            Fetch::Failed(_, _, old_err) => {
+                &err == old_err
+            }
+            _ => true
+        };
+
+        let old = std::mem::replace(self, Fetch::default());
+        let new = old.failed(err);
+        std::mem::replace(self, new);
+
+        will_change
+    }
+
+}
+
+impl <REQ: FetchRequest> Fetch<REQ, REQ::ResponseBody>{
+
+    /// Makes an asynchronous fetch request, which will produce a message that makes use of a
+    /// `FetchAction` when it completes.
+    pub async fn fetch<Msg>(
+        &self,
+        to_msg: impl Fn(FetchAction<REQ::ResponseBody>) -> Msg
+    )-> Msg {
+        let request = self.as_ref().req();
+        let fetch_state = match fetch_resource(request).await {
+            Ok(response) => FetchAction::Success(response),
+            Err(err) => FetchAction::Failed(err)
+        };
+
+        to_msg(fetch_state)
+    }
+}
+
+impl <REQ, RES> Fetch<REQ, RES> {
+    pub fn new(req: REQ) -> Self {
+        Fetch::NotFetching(req, None)
+    }
+
+    // TODO need tests to make sure that this is ergonomic.
+    /// Makes an asynchronous fetch request, which will produce a message that makes use of a
+    /// `FetchAction` when it completes.
+    pub async fn fetch_convert<T: FetchRequest, Msg>(
+        &self,
+        to_request: impl Fn(&Self) -> &T,
+        to_msg: impl Fn(FetchAction<T::ResponseBody>) -> Msg
+    ) -> Msg {
+        let request = to_request(self);
+        let fetch_state = match fetch_resource(request).await {
+            Ok(response) => FetchAction::Success(response),
+            Err(err) => FetchAction::Failed(err)
+        };
+
+        to_msg(fetch_state)
+    }
+
+    /// Transforms the type of the response held by the fetch state (if any exists).
+    pub fn map<NewRes, F: Fn(Fetch<REQ, RES>) -> Fetch<REQ, NewRes> >(self, f:F) -> Fetch<REQ, NewRes> {
+        f(self)
+    }
+
+    pub fn unwrap(self) -> RES {
+        // TODO, actually provide some diagnostic here.
+        self.res().unwrap()
+    }
+
+    /// Gets the response (if present).
+    pub fn res(self) -> Option<RES> {
+        match self {
+            Fetch::NotFetching(_, res) => res,
+            Fetch::Fetching(_, res) => res,
+            Fetch::Fetched(_, res) => Some(res),
+            Fetch::Failed(_, res, _) => res,
+        }
+    }
+
+    /// Gets the request
+    pub fn req(self) -> REQ {
+        match self {
+            Fetch::NotFetching(req, _) => req,
+            Fetch::Fetching(req, _) => req,
+            Fetch::Fetched(req, _) => req,
+            Fetch::Failed(req, _, _) => req,
+        }
+    }
+
+    /// Converts the wrapped values to references.
+    ///
+    /// # Note
+    /// This may be expensive if a Failed variant made into a reference, as the FetchError is cloned.
+    pub fn as_ref(&self) -> Fetch<&REQ, &RES> {
+        match self {
+            Fetch::NotFetching(req, res) => Fetch::NotFetching(req, res.as_ref()),
+            Fetch::Fetching(req, res) => Fetch::Fetching(req, res.as_ref()),
+            Fetch::Fetched(req, res) => Fetch::Fetched(req, res),
+            Fetch::Failed(req, res, err) => Fetch::Failed(req, res.as_ref(), err.clone()),
+        }
+    }
+
+    /// Converts the wrapped values to mutable references.
+    ///
+    /// # Note
+    /// This may be expensive if a Failed variant made into a reference, as the FetchError is cloned.
+    pub fn as_mut(&mut self) -> Fetch<&mut REQ, &mut RES> {
+        match self {
+            Fetch::NotFetching(req, res) => Fetch::NotFetching(req, res.as_mut()),
+            Fetch::Fetching(req, res) => Fetch::Fetching(req, res.as_mut()),
+            Fetch::Fetched(req, res) => Fetch::Fetched(req, res),
+            Fetch::Failed(req, res, err) => Fetch::Failed(req, res.as_mut(), err.clone()),
+        }
+    }
+
+
+    fn not_fetching(self) -> Self {
+        match self {
+            Fetch::NotFetching(req, res) => {
+                Fetch::NotFetching(req, res)
+            }
+            Fetch::Fetching(req, res) => {
+                Fetch::NotFetching(req, res)
+            }
+            Fetch::Fetched(req, res) => {
+                Fetch::NotFetching(req, Some(res))
+            }
+            Fetch::Failed(req, res, _err) => {
+                Fetch::NotFetching(req, res)
+            }
+        }
+    }
+
+    fn fetching(self) -> Self {
+        match self {
+            Fetch::NotFetching(req, res) => {
+                Fetch::Fetching(req, res)
+            }
+            Fetch::Fetching(req, res) => {
+                Fetch::Fetching(req, res)
+            }
+            Fetch::Fetched(req, res) => {
+                Fetch::Fetching(req, Some(res))
+            }
+            Fetch::Failed(req, res, _err) => {
+                Fetch::Fetching(req, res)
+            }
+        }
+    }
+
+    fn fetched(self, res: RES) -> Self {
+        match self {
+            Fetch::NotFetching(req, _res) => {
+                Fetch::Fetched(req, res)
+            }
+            Fetch::Fetching(req, _res) => {
+                Fetch::Fetched(req, res)
+            }
+            Fetch::Fetched(req, _res) => {
+                Fetch::Fetched(req, res)
+            }
+            Fetch::Failed(req, _res, _err) => {
+                Fetch::Fetched(req, res)
+            }
+        }
+    }
+
+    fn failed(self, err: FetchError) -> Self {
+        match self {
+            Fetch::NotFetching(req, res) => {
+                Fetch::Failed(req, res, err)
+            }
+            Fetch::Fetching(req, res) => {
+                Fetch::Failed(req, res, err)
+            }
+            Fetch::Fetched(req, res) => {
+                Fetch::Failed(req, Some(res), err)
+            }
+            Fetch::Failed(req, res, _err) => {
+                Fetch::Failed(req, res, err)
+            }
+        }
+    }
+
+    /// Determines if there is a different discriminant between the fetch states.
+    fn discriminant_differs(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) != std::mem::discriminant(other)
+    }
+}
+
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum FetchState<T> {
+pub enum FetchAction<T> {
     NotFetching,
     Fetching,
     Success(T),
     Failed(FetchError),
 }
 
-impl <T> Default for FetchState<T> {
+impl <T> Default for FetchAction<T> {
     fn default() -> Self {
-        FetchState::NotFetching
+        FetchAction::NotFetching
     }
 }
 
-impl <T> FetchState<T> {
+impl <T> FetchAction<T> {
     pub fn success(&self) -> Option<&T> {
         match self {
-            FetchState::Success(value) => Some(value),
+            FetchAction::Success(value) => Some(value),
             _ => None
         }
     }
 
     /// Gets the value out of the fetch state if it is a `Success` variant.
     pub fn unwrap(self) -> T {
-        if let FetchState::Success(value) = self {
+        if let FetchAction::Success(value) = self {
             value
         } else {
             panic!("Could not unwrap value of FetchState");
@@ -48,38 +317,38 @@ impl <T> FetchState<T> {
     }
 
     /// Transforms the FetchState into another FetchState using the given function.
-    pub fn map<U, F: Fn(T)-> U>(self, f: F ) -> FetchState<U> {
+    pub fn map<U, F: Fn(T)-> U>(self, f: F ) -> FetchAction<U> {
         match self {
-            FetchState::NotFetching => FetchState::NotFetching,
-            FetchState::Fetching => FetchState::NotFetching,
-            FetchState::Success(t) => FetchState::Success(f(t)),
-            FetchState::Failed(e) => FetchState::Failed(e)
+            FetchAction::NotFetching => FetchAction::NotFetching,
+            FetchAction::Fetching => FetchAction::NotFetching,
+            FetchAction::Success(t) => FetchAction::Success(f(t)),
+            FetchAction::Failed(e) => FetchAction::Failed(e)
         }
     }
 
     pub fn alter<F: Fn(&mut T)>(&mut self, f: F) {
         match self {
-            FetchState::Success(t) => f(t),
+            FetchAction::Success(t) => f(t),
             _ => {}
         }
     }
 
-    pub fn as_ref(&self) -> FetchState<&T>  {
+    pub fn as_ref(&self) -> FetchAction<&T>  {
         match self {
-            FetchState::NotFetching => FetchState::NotFetching,
-            FetchState::Fetching => FetchState::NotFetching,
-            FetchState::Success(t) => FetchState::Success(t),
-            FetchState::Failed(e) => FetchState::Failed(e.clone())
+            FetchAction::NotFetching => FetchAction::NotFetching,
+            FetchAction::Fetching => FetchAction::NotFetching,
+            FetchAction::Success(t) => FetchAction::Success(t),
+            FetchAction::Failed(e) => FetchAction::Failed(e.clone())
         }
     }
 }
 
-impl <T: PartialEq> FetchState<T> {
+impl <T: PartialEq> FetchAction<T> {
     /// Sets the fetch state to be fetching.
     /// If it wasn't already in a fetch state, it will return `true`,
     /// to indicate that the component should re-render.
     pub fn set_fetching(&mut self) -> bool {
-        self.neq_assign(FetchState::Fetching)
+        self.neq_assign(FetchAction::Fetching)
     }
 }
 
@@ -173,7 +442,6 @@ impl std::fmt::Display for FetchError {
 }
 
 impl std::error::Error for FetchError {
-
 }
 
 /// Trait used to declare how a fetch request shall be made using a type.
@@ -200,7 +468,7 @@ pub trait FetchRequest {
 
 /// Fetch a resource, returning a result of the expected response,
 /// or an error indicating what went wrong.
-pub async fn fetch_resource<T: FetchRequest>(request: T) -> Result<T::ResponseBody, FetchError> {
+pub async fn fetch_resource<T: FetchRequest>(request: &T) -> Result<T::ResponseBody, FetchError> {
     let method = request.method();
     let headers = request.headers();
     let headers = JsValue::from_serde(&headers).expect("Convert Headers to Tuple");
@@ -257,7 +525,7 @@ pub async fn fetch_resource<T: FetchRequest>(request: T) -> Result<T::ResponseBo
 /// convert the success and failure cases.
 ///
 /// This is useful if you want to handle the success case and failure case separately.
-pub async fn fetch_to_msg<T: FetchRequest, Msg>(request: T, success: impl Fn(T::ResponseBody) -> Msg, failure: impl Fn(FetchError) -> Msg) -> Msg {
+pub async fn fetch_to_msg<T: FetchRequest, Msg>(request: &T, success: impl Fn(T::ResponseBody) -> Msg, failure: impl Fn(FetchError) -> Msg) -> Msg {
     fetch_resource(request)
         .await
         .map(success)
@@ -268,11 +536,45 @@ pub async fn fetch_to_msg<T: FetchRequest, Msg>(request: T, success: impl Fn(T::
 /// by way of a provided closure.
 ///
 /// This is useful if you just want to update a FetchState in your model based on the result of your request.
-pub async fn fetch_to_state_msg<T: FetchRequest, Msg>(request: T, to_msg: impl Fn(FetchState<T::ResponseBody>) -> Msg) -> Msg {
+pub async fn fetch_to_state_msg<T: FetchRequest, Msg>(request: &T, to_msg: impl Fn(FetchAction<T::ResponseBody>) -> Msg) -> Msg {
     let fetch_state = match fetch_resource(request).await {
-        Ok(response) => FetchState::Success(response),
-        Err(err) => FetchState::Failed(err)
+        Ok(response) => FetchAction::Success(response),
+        Err(err) => FetchAction::Failed(err)
     };
 
     to_msg(fetch_state)
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::sync::Arc;
+
+    #[test]
+    fn setting_fetching_state_doesnt_change_strong_count() {
+        // This is done to detect if a leak occurred.
+        let data: Arc<i32> = Arc::new(22);
+        let cloned_data: Arc<i32> = data.clone();
+        assert_eq!(Arc::strong_count(&data), 2);
+        let mut fs: Fetch<Arc<i32>, ()> = Fetch::new(cloned_data);
+        fs.set_fetching();
+
+        assert_eq!(Arc::strong_count(&data), 2);
+        assert_eq!(Fetch::Fetching(Arc::new(22), None), fs)
+    }
+
+    #[test]
+    fn setting_fetched_state() {
+        let mut fs = Fetch::Fetching((), None);
+        assert!(fs.set_fetched("SomeValue".to_string()));
+        assert_eq!(fs, Fetch::Fetched((), "SomeValue".to_string()));
+    }
+
+    #[test]
+    fn setting_fetching_from_fetched() {
+        let mut fs = Fetch::Fetched((), "Lorem".to_string());
+        assert!(fs.set_fetching());
+        assert_eq!(fs, Fetch::Fetching((), Some("Lorem".to_string())));
+    }
 }
