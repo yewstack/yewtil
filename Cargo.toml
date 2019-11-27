@@ -30,7 +30,7 @@ pure = ["neq", "yewtil-macro"]
 with_callback = []
 history = []
 dsl = []
-fetch = ["wasm-bindgen-futures", "wasm-bindgen", "futures", "web-sys", "serde", "serde_json"]
+fetch = ["wasm-bindgen-futures", "wasm-bindgen", "futures", "web-sys", "serde", "serde_json", "neq"]
 
 # Ptr features
 lrc = []

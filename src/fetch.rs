@@ -13,56 +13,76 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response, Window};
-use crate::NeqAssign;
+use crate::NeqAssign; // requires "neq" feature.
 
+/// Indicates that a change was caused by a set function.
 pub type DidChange = bool;
 
 
-// TODO what might make sense would be to change the current name of FetchState to FetchAction.
-// And have FetchState3 just be named Fetch or FetchState.
-// A message resolved from a fetch future would produce a FetchAction,
-// and the fetch action would be applied against an existing fetch state, yielding a should render bool.
-// Fetch actions could still be used to hold data in a model,
-// but using a fetch state would allow you to organize your requests and responses better.
+/// A fetch type that is useful for when you don't hold any request directly.
+///
+/// This is useful for GET and DELETE requests where additional information needed to create the request object
+/// can be provided by a closure.
+pub type AcquireFetch<T> = Fetch<(), T>;
+
+/// A fetch type that is useful for when the request type is the same as the response type.
+///
+/// This makes sense to use when the request and response bodies are exactly the same.
+/// Some PUT requests are amenable to this arrangement.
+pub type ModifyFetch<T> = Fetch<T, T>;
 
 
-pub type AcquireFetchState<T> = Fetch<(), T>;
-pub type ModifyFetchState<T> = Fetch<T, T>;
-
-
-/// Represents the state of a request, response pair that are used in fetch requests.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Fetch<REQ, RES> {
-    NotFetching(REQ, Option<RES>),
-    Fetching(REQ, Option<RES>),
-    Fetched(REQ, RES),
-    Failed(REQ, Option<RES>, FetchError)
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Fetch<REQ, RES> {
+    request: REQ,
+    response: FetchState<RES>
 }
 
-impl <REQ: Default, RES> Default for Fetch<REQ, RES> {
+/// Holds the state of the request being made and response
+/// (if any has been made successfully at any prior point).
+#[derive(Clone, Debug, PartialEq)]
+pub enum FetchState<RES> {
+    NotFetching(Option<RES>),
+    Fetching(Option<RES>),
+    Fetched(RES),
+    Failed(Option<RES>, FetchError)
+}
+
+impl <RES> Default for FetchState<RES> {
     fn default() -> Self {
-        Fetch::new(REQ::default())
+        FetchState::NotFetching(None)
+    }
+}
+
+
+impl <REQ: PartialEq, RES> Fetch<REQ, RES> {
+
+    /// Sets the request without changing the variant.
+    pub fn set_req(&mut self, request: REQ) -> DidChange {
+        self.request.neq_assign(request)
     }
 }
 
 impl <REQ: Default, RES: PartialEq> Fetch<REQ, RES> {
 
+    /// Sets the Fetch wrapper to indicate that a request was successfully fetched.
     pub fn set_fetched(&mut self, res: RES) -> DidChange {
-        let will_change = match self {
-            Fetch::Fetched(_, old_res) => {
+        let will_change = match &self.response {
+            FetchState::Fetched(old_res) => {
                 &res == old_res
             },
             _ => true
         };
 
         // TODO replace this with std::mem::take when it stabilizes.
-        let old = std::mem::replace(self, Fetch::default());
+        let old = std::mem::replace(&mut self.response, FetchState::default());
         let new = old.fetched(res);
-        std::mem::replace(self, new);
+        std::mem::replace(&mut self.response, new);
 
         will_change
     }
 
+    /// Apply a FetchAction to alter the Fetch wrapper to perform a state change.
     pub fn apply(&mut self, action: FetchAction<RES>) -> DidChange {
         match action {
             FetchAction::NotFetching => self.set_not_fetching(),
@@ -74,67 +94,57 @@ impl <REQ: Default, RES: PartialEq> Fetch<REQ, RES> {
 }
 
 
-impl <REQ: Default, RES> Fetch<REQ, RES> {
+impl <REQ, RES> Fetch<REQ, RES> {
 
+    /// Creates a new Fetch wrapper around the request.
+    ///
+    /// It will default the response field to be put in a NotFetching state.
+    pub fn new(request: REQ) -> Self {
+        Self {
+            request,
+            response: Default::default()
+        }
+    }
+
+    /// Sets the response field to indicate that no fetch request is in flight.
     pub fn set_not_fetching(&mut self) -> DidChange {
-        let will_change = self.discriminant_differs(&Fetch::NotFetching(REQ::default(), None));
+        let will_change = self.response.discriminant_differs(&FetchState::NotFetching(None));
 
-        let old = std::mem::replace(self, Fetch::default());
+        let old = std::mem::replace(&mut self.response, FetchState::default());
         let new = old.not_fetching();
-        std::mem::replace(self, new);
+        std::mem::replace(&mut self.response, new);
 
         will_change
     }
 
+    /// Sets the response field to indicate that a fetch request is currently being made.
     pub fn set_fetching(&mut self) -> DidChange {
-        let will_change = self.discriminant_differs(&Fetch::Fetching(REQ::default(), None));
+        let will_change = self.response.discriminant_differs(&FetchState::Fetching(None));
 
-        let old = std::mem::replace(self, Fetch::default());
+        let old = std::mem::replace(&mut self.response, FetchState::default());
         let new = old.fetching();
-        std::mem::replace(self, new);
+        std::mem::replace(&mut self.response, new);
 
         will_change
     }
 
+    /// Sets the response field to indicate that a fetch request failed to complete.
     pub fn set_failed(&mut self, err: FetchError) -> DidChange {
-        let will_change = match self {
-            Fetch::Failed(_, _, old_err) => {
+        let will_change = match &self.response {
+            FetchState::Failed(_, old_err) => {
                 &err == old_err
             }
             _ => true
         };
 
-        let old = std::mem::replace(self, Fetch::default());
+        let old = std::mem::replace(&mut self.response, FetchState::default());
         let new = old.failed(err);
-        std::mem::replace(self, new);
+        std::mem::replace(&mut self.response, new);
 
         will_change
     }
 
-}
 
-impl <REQ: FetchRequest> Fetch<REQ, REQ::ResponseBody>{
-
-    /// Makes an asynchronous fetch request, which will produce a message that makes use of a
-    /// `FetchAction` when it completes.
-    pub async fn fetch<Msg>(
-        &self,
-        to_msg: impl Fn(FetchAction<REQ::ResponseBody>) -> Msg
-    )-> Msg {
-        let request = self.as_ref().req();
-        let fetch_state = match fetch_resource(request).await {
-            Ok(response) => FetchAction::Success(response),
-            Err(err) => FetchAction::Failed(err)
-        };
-
-        to_msg(fetch_state)
-    }
-}
-
-impl <REQ, RES> Fetch<REQ, RES> {
-    pub fn new(req: REQ) -> Self {
-        Fetch::NotFetching(req, None)
-    }
 
     // TODO need tests to make sure that this is ergonomic.
     /// Makes an asynchronous fetch request, which will produce a message that makes use of a
@@ -158,29 +168,28 @@ impl <REQ, RES> Fetch<REQ, RES> {
         f(self)
     }
 
+    /// Unwraps the Fetch wrapper to produce the response it may contain.
+    ///
+    /// # Panics
+    /// If the Fetch wrapper doesn't contain an instance of a response, this function will panic.
     pub fn unwrap(self) -> RES {
         // TODO, actually provide some diagnostic here.
         self.res().unwrap()
     }
 
-    /// Gets the response (if present).
+    /// Gets the response body (if present).
     pub fn res(self) -> Option<RES> {
-        match self {
-            Fetch::NotFetching(_, res) => res,
-            Fetch::Fetching(_, res) => res,
-            Fetch::Fetched(_, res) => Some(res),
-            Fetch::Failed(_, res, _) => res,
+        match self.response {
+            FetchState::NotFetching(res) => res,
+            FetchState::Fetching(res) => res,
+            FetchState::Fetched(res) => Some(res),
+            FetchState::Failed(res, _) => res,
         }
     }
 
-    /// Gets the request
+    /// Gets the request body.
     pub fn req(self) -> REQ {
-        match self {
-            Fetch::NotFetching(req, _) => req,
-            Fetch::Fetching(req, _) => req,
-            Fetch::Fetched(req, _) => req,
-            Fetch::Failed(req, _, _) => req,
-        }
+        self.request
     }
 
     /// Converts the wrapped values to references.
@@ -188,11 +197,16 @@ impl <REQ, RES> Fetch<REQ, RES> {
     /// # Note
     /// This may be expensive if a Failed variant made into a reference, as the FetchError is cloned.
     pub fn as_ref(&self) -> Fetch<&REQ, &RES> {
-        match self {
-            Fetch::NotFetching(req, res) => Fetch::NotFetching(req, res.as_ref()),
-            Fetch::Fetching(req, res) => Fetch::Fetching(req, res.as_ref()),
-            Fetch::Fetched(req, res) => Fetch::Fetched(req, res),
-            Fetch::Failed(req, res, err) => Fetch::Failed(req, res.as_ref(), err.clone()),
+        let response = match &self.response {
+            FetchState::NotFetching(res) => FetchState::NotFetching(res.as_ref()),
+            FetchState::Fetching(res) => FetchState::Fetching(res.as_ref()),
+            FetchState::Fetched(res) => FetchState::Fetched(res),
+            FetchState::Failed(res, err) => FetchState::Failed(res.as_ref(), err.clone()),
+        };
+
+        Fetch {
+            request: &self.request,
+            response
         }
     }
 
@@ -201,95 +215,120 @@ impl <REQ, RES> Fetch<REQ, RES> {
     /// # Note
     /// This may be expensive if a Failed variant made into a reference, as the FetchError is cloned.
     pub fn as_mut(&mut self) -> Fetch<&mut REQ, &mut RES> {
-        match self {
-            Fetch::NotFetching(req, res) => Fetch::NotFetching(req, res.as_mut()),
-            Fetch::Fetching(req, res) => Fetch::Fetching(req, res.as_mut()),
-            Fetch::Fetched(req, res) => Fetch::Fetched(req, res),
-            Fetch::Failed(req, res, err) => Fetch::Failed(req, res.as_mut(), err.clone()),
+        let response = match &mut self.response {
+            FetchState::NotFetching(res) => FetchState::NotFetching(res.as_mut()),
+            FetchState::Fetching(res) => FetchState::Fetching(res.as_mut()),
+            FetchState::Fetched(res) => FetchState::Fetched(res),
+            FetchState::Failed(res, err) => FetchState::Failed(res.as_mut(), err.clone()),
+        };
+        Fetch {
+            request: &mut self.request,
+            response
         }
     }
+}
 
+impl <REQ: FetchRequest> Fetch<REQ, REQ::ResponseBody>{
+
+    /// Makes an asynchronous fetch request, which will produce a message that makes use of a
+    /// `FetchAction` when it completes.
+    pub async fn fetch<Msg>(
+        &self,
+        to_msg: impl Fn(FetchAction<REQ::ResponseBody>) -> Msg
+    )-> Msg {
+        let request = self.as_ref().req();
+        let fetch_state = match fetch_resource(request).await {
+            Ok(response) => FetchAction::Success(response),
+            Err(err) => FetchAction::Failed(err)
+        };
+
+        to_msg(fetch_state)
+    }
+}
+
+impl <RES> FetchState<RES> {
+
+    /// Determines if there is a different discriminant between the fetch states.
+    fn discriminant_differs(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) != std::mem::discriminant(other)
+    }
 
     fn not_fetching(self) -> Self {
         match self {
-            Fetch::NotFetching(req, res) => {
-                Fetch::NotFetching(req, res)
+            FetchState::NotFetching(res) => {
+                FetchState::NotFetching( res)
             }
-            Fetch::Fetching(req, res) => {
-                Fetch::NotFetching(req, res)
+            FetchState::Fetching(res) => {
+                FetchState::NotFetching( res)
             }
-            Fetch::Fetched(req, res) => {
-                Fetch::NotFetching(req, Some(res))
+            FetchState::Fetched(res) => {
+                FetchState::NotFetching( Some(res))
             }
-            Fetch::Failed(req, res, _err) => {
-                Fetch::NotFetching(req, res)
+            FetchState::Failed(res, _err) => {
+                FetchState::NotFetching( res)
             }
         }
     }
 
     fn fetching(self) -> Self {
         match self {
-            Fetch::NotFetching(req, res) => {
-                Fetch::Fetching(req, res)
+            FetchState::NotFetching(res) => {
+                FetchState::Fetching(res)
             }
-            Fetch::Fetching(req, res) => {
-                Fetch::Fetching(req, res)
+            FetchState::Fetching(res) => {
+                FetchState::Fetching(res)
             }
-            Fetch::Fetched(req, res) => {
-                Fetch::Fetching(req, Some(res))
+            FetchState::Fetched(res) => {
+                FetchState::Fetching(Some(res))
             }
-            Fetch::Failed(req, res, _err) => {
-                Fetch::Fetching(req, res)
+            FetchState::Failed(res, _err) => {
+                FetchState::Fetching(res)
             }
         }
     }
 
     fn fetched(self, res: RES) -> Self {
         match self {
-            Fetch::NotFetching(req, _res) => {
-                Fetch::Fetched(req, res)
+            FetchState::NotFetching(_res) => {
+                FetchState::Fetched(res)
             }
-            Fetch::Fetching(req, _res) => {
-                Fetch::Fetched(req, res)
+            FetchState::Fetching(_res) => {
+                FetchState::Fetched(res)
             }
-            Fetch::Fetched(req, _res) => {
-                Fetch::Fetched(req, res)
+            FetchState::Fetched(_res) => {
+                FetchState::Fetched(res)
             }
-            Fetch::Failed(req, _res, _err) => {
-                Fetch::Fetched(req, res)
+            FetchState::Failed(_res, _err) => {
+                FetchState::Fetched(res)
             }
         }
     }
 
     fn failed(self, err: FetchError) -> Self {
         match self {
-            Fetch::NotFetching(req, res) => {
-                Fetch::Failed(req, res, err)
+            FetchState::NotFetching(res) => {
+                FetchState::Failed(res, err)
             }
-            Fetch::Fetching(req, res) => {
-                Fetch::Failed(req, res, err)
+            FetchState::Fetching(res) => {
+                FetchState::Failed(res, err)
             }
-            Fetch::Fetched(req, res) => {
-                Fetch::Failed(req, Some(res), err)
+            FetchState::Fetched(res) => {
+                FetchState::Failed(Some(res), err)
             }
-            Fetch::Failed(req, res, _err) => {
-                Fetch::Failed(req, res, err)
+            FetchState::Failed(res, _err) => {
+                FetchState::Failed(res, err)
             }
         }
-    }
-
-    /// Determines if there is a different discriminant between the fetch states.
-    fn discriminant_differs(&self, other: &Self) -> bool {
-        std::mem::discriminant(self) != std::mem::discriminant(other)
     }
 }
 
 
+/// Represents a state change to Fetch wrapper.
 #[derive(Clone, PartialEq, Debug)]
 pub enum FetchAction<T> {
     NotFetching,
     Fetching,
-    Success(T),
+    Success(T), // TODO rename to Fetched(T)
     Failed(FetchError),
 }
 
@@ -300,6 +339,7 @@ impl <T> Default for FetchAction<T> {
 }
 
 impl <T> FetchAction<T> {
+    /// Returns a reference to the Success case
     pub fn success(&self) -> Option<&T> {
         match self {
             FetchAction::Success(value) => Some(value),
@@ -326,6 +366,7 @@ impl <T> FetchAction<T> {
         }
     }
 
+    /// Applies a function that mutates the response if the Action is the success case.
     pub fn alter<F: Fn(&mut T)>(&mut self, f: F) {
         match self {
             FetchAction::Success(t) => f(t),
@@ -333,6 +374,7 @@ impl <T> FetchAction<T> {
         }
     }
 
+    /// Converts the FetchAction to contain a reference to the success case.
     pub fn as_ref(&self) -> FetchAction<&T>  {
         match self {
             FetchAction::NotFetching => FetchAction::NotFetching,
@@ -399,6 +441,7 @@ impl <'a, T: Serialize> MethodBody<'a, T> {
     }
 }
 
+/// A representation of an error that may occur when making a fetch request.
 #[derive(Debug, PartialEq, Clone)]
 pub enum FetchError {
     /// The response could not be deserialized.
@@ -411,7 +454,7 @@ pub enum FetchError {
     /// The Fetch Future could not be created due to a misconfiguration.
     CouldNotCreateFetchFuture,
     /// The request could cont be created due to a misconfiguration.
-    CouldNotCreateRequest(JsValue),
+    CouldNotCreateRequest(JsValue), // TODO, convert this to a string or more structured error - implement Hash on this and related structs.
     /// Could not serialize the request body.
     CouldNotSerializeRequestBody
 }
