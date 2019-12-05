@@ -7,7 +7,7 @@ As a consequence of this, the Yew crate is free to make changes that may cause b
 
 ## Features
 Currently, this crate supports these features in a stable capacity:
-* `neq_assign` - makes assigning props and returning a relevant ShouldRender value easier.
+* `NeqAssign` - makes assigning props and returning a relevant ShouldRender value easier.
 * Pure Components - implement pure components using two traits: `PureComponent` and `Emissive`, the latter of which can be derived in most cases. 
 This should make it much easier to define simple components that don't hold state.
 * `Mrc`/`Irc` smart pointers - Rc-like pointers that are more ergonomic to use within Yew.

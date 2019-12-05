@@ -1,6 +1,6 @@
 use crate::Msg::SetMarkdownFetchState;
 use yew::{html, Component, ComponentLink, Html, ShouldRender};
-use yewtil::fetch::{FetchState, FetchRequest, MethodBody};
+use yewtil::fetch::{FetchAction, FetchRequest, MethodBody};
 use yewtil::fetch::fetch_to_state_msg;
 use serde::{Serialize, Deserialize};
 use wasm_bindgen::prelude::*;
@@ -11,7 +11,7 @@ pub fn run_app() {
 }
 
 struct Model {
-    markdown: FetchState<Vec<Employee>>,
+    markdown: FetchAction<Vec<Employee>>,
     link: ComponentLink<Self>,
 }
 
@@ -50,7 +50,7 @@ impl FetchRequest for Request {
 
 
 enum Msg {
-    SetMarkdownFetchState(FetchState<Vec<Employee>>),
+    SetMarkdownFetchState(FetchAction<Vec<Employee>>),
     GetMarkdown,
 }
 
@@ -62,7 +62,7 @@ impl Component for Model {
 
     fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
         Model {
-            markdown: FetchState::NotFetching,
+            markdown: FetchAction::NotFetching,
             link,
         }
     }
@@ -76,7 +76,7 @@ impl Component for Model {
             Msg::GetMarkdown => {
                 let request = Request;
                 self.link.send_future(fetch_to_state_msg(request, Msg::SetMarkdownFetchState));
-                self.link.send_self(SetMarkdownFetchState(FetchState::Fetching));
+                self.link.send_self(SetMarkdownFetchState(FetchAction::Fetching));
                 false
             }
         }
@@ -84,12 +84,12 @@ impl Component for Model {
 
     fn view(&self) -> Html<Self> {
         match &self.markdown {
-            FetchState::NotFetching => {
+            FetchAction::NotFetching => {
                 html! {<button onclick=|_| Msg::GetMarkdown>{"Get employees"}</button>}
             }
-            FetchState::Fetching => html! {"Fetching"},
-            FetchState::Success(data) => data.iter().map(render_employee).collect(),
-            FetchState::Failed(err) => html! {&err},
+            FetchAction::Fetching => html! {"Fetching"},
+            FetchAction::Success(data) => data.iter().map(render_employee).collect(),
+            FetchAction::Failed(err) => html! {&err},
         }
     }
 }
