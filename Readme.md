@@ -12,6 +12,8 @@ Currently, this crate supports these features in a stable capacity:
 This should make it much easier to define simple components that don't hold state.
 * `Mrc`/`Irc` smart pointers - Rc-like pointers that are more ergonomic to use within Yew.
 * `History` - A wrapper that holds the history of values that have been assigned to it.
+* `Effect` - A way to update component state by defining what to change inside of `html!` callbacks
+ instead of handling messages in `Component::update()`.
 
 This crate also has an experimental feature flag that enables the following features:
 * `Lrc` smart pointer - Rc-like pointer implemented on top of a linked list. Allows for novel state update mechanics 

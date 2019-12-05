@@ -49,5 +49,10 @@ pub use with_callback::WithCallback;
 #[cfg(feature = "fetch")]
 pub mod fetch;
 
+#[cfg(feature = "effect")]
+mod effect;
+#[cfg(feature = "effect")]
+pub use effect::{Effect, effect};
+
 #[cfg(all(target_arch = "wasm32", not(target_os="wasi"), not(cargo_web), feature = "future"))]
 pub mod future;

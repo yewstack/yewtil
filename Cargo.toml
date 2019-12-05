@@ -16,7 +16,7 @@ default = ["stable"]
 # Broad features
 all = ["stable", "experimental"]
 ## All features MUST be stable or experimental
-stable = ["neq", "pure", "history", "mrc_irc", "future"]
+stable = ["neq", "pure", "history", "mrc_irc", "effect", "future"]
 experimental = ["dsl", "lrc", "with_callback", "fetch" ]
 
 
@@ -30,6 +30,7 @@ pure = ["neq", "yewtil-macro"]
 with_callback = []
 history = []
 dsl = []
+effect = []
 fetch = ["serde", "serde_json", "neq", "future"]
 future = ["wasm-bindgen-futures", "wasm-bindgen", "futures", "web-sys"]
 
@@ -73,5 +74,6 @@ members = [
     "examples/lrc",
     "examples/history",
     "examples/mrc_irc",
+    "examples/effect",
     "examples/fetch"
 ]
