@@ -1,4 +1,15 @@
 //! Utility library for the Yew frontend web framework.
+//!
+//! All features:
+//!
+//! * "neq" - NeqAssign trait
+//! * "pure" - Pure components
+//! * "future" - Async support for Yew Messages
+//! * "fetch" - Wrapper that holds requests and responses.
+//! * "mrc_irc" - Ergonomic Rc pointers.
+//! * "lrc" - Linked-list Rc pointer.
+//! * "history" - History tracker
+//! * "dsl" - Use functions instead of Yew's `html!` macro.
 
 #[cfg(feature = "dsl")]
 pub mod dsl;
