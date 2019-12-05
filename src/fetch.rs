@@ -248,20 +248,26 @@ mod test {
         fs.set_fetching();
 
         assert_eq!(Arc::strong_count(&data), 2);
-        assert_eq!(Fetch::Fetching(Arc::new(22), None), fs)
+        assert_eq!(FetchState::Fetching(None), fs.response)
     }
 
     #[test]
     fn setting_fetched_state() {
-        let mut fs = Fetch::Fetching((), None);
+        let mut fs = Fetch {
+            request: (),
+            response: FetchState::Fetching(None)
+        };
         assert!(fs.set_fetched("SomeValue".to_string()));
-        assert_eq!(fs, Fetch::Fetched((), "SomeValue".to_string()));
+        assert_eq!(fs.response, FetchState::Fetched("SomeValue".to_string()));
     }
 
     #[test]
     fn setting_fetching_from_fetched() {
-        let mut fs = Fetch::Fetched((), "Lorem".to_string());
+        let mut fs = Fetch {
+            request: (),
+            response: FetchState::Fetched("Lorem".to_string())
+        };
         assert!(fs.set_fetching());
-        assert_eq!(fs, Fetch::Fetching((), Some("Lorem".to_string())));
+        assert_eq!(fs.response, FetchState::Fetching(Some("Lorem".to_string())));
     }
 }

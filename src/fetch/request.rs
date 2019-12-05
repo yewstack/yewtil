@@ -54,33 +54,11 @@ impl <'a, T: Serialize> MethodBody<'a, T> {
     }
 }
 
-
-pub trait TransportMechanism {
-    type SerOutput;
-    type DeInput;
-}
-
-//pub struct Text;
-//pub struct Bytes;
-//impl TransportMechanism for Text {
-//    type SerOutput = String;
-//    type DeInput = str; // TODO &'static seems wrong.
-//}
-//
-//impl TransportMechanism for Bytes {
-//    type SerOutput = Vec<u8>;
-//    type DeInput = [u8];
-//}
-
+// TODO, this is only works with String/&str. It would be a good addition if  Vec<u8>/&[u8] were supported.
 /// Determines what format the data will be transmitted in.
 pub trait Format {
-//    type Transport: TransportMechanism;
     fn serialize<T: Serialize>(t: &T) -> Option<String>;
-    fn deserialize<T: DeserializeOwned>(s: &str) -> Option<T>
-//        where
-//            I: AsRef<<Self::Transport as TransportMechanism>::DeInput>,
-//            T: DeserializeOwned
-    ;
+    fn deserialize<T: DeserializeOwned>(s: &str) -> Option<T>;
 }
 
 /// Transport data using the JSON format
@@ -99,6 +77,66 @@ impl Format for Json {
 
 
 /// Trait used to declare how a fetch request shall be made using a type.
+///
+///
+/// Because it would be of little benefit to have to implement all details of this trait for every
+/// request you make, the following should provide a template for reducing the amount of boilerplate
+/// per request.
+///
+/// # Simplifying Example
+/// ```
+/// use yewtil::fetch::{FetchRequest, MethodBody, Json, Fetch};
+/// use serde::Serialize;
+/// use serde::de::DeserializeOwned;
+///
+/// pub trait MyFetchRequest {
+///     type RequestBody: Serialize;
+///     type ResponseBody: DeserializeOwned;
+///     fn path(&self) -> String;
+///     fn method(&self) -> MethodBody<Self::RequestBody>;
+/// }
+/// /// A wrapper to allow implementing a foreign trait generically for anything wrapped by it that meets
+/// /// the specified type bounds.
+/// /// This isn't ideal, and will not be required in the future after coherence rules are changed.
+/// /// https://github.com/rust-lang/rfcs/blob/master/text/2451-re-rebalancing-coherence.md
+/// pub struct LocalWrapper<T>(T);
+///
+/// impl <T: MyFetchRequest> FetchRequest for LocalWrapper<T> {
+///     type RequestBody = T::RequestBody;
+///     type ResponseBody = T::ResponseBody;
+///     type Format = Json; // Always serialize using json
+///
+///     fn url(&self) -> String {
+///         // The origin will always be the same
+///         format!("http://some_host_website.com/{}", self.0.path())
+///     }
+///
+///     fn method(&self) -> MethodBody<Self::RequestBody> {
+///         self.0.method()
+///     }
+///
+///     fn headers(&self) -> Vec<(String, String)> {
+///         // Always attach the same headers.
+///         vec![
+///             ("Content-Type".to_string(), "application/json".to_string())
+///         ]
+///     }
+/// }
+///
+/// pub struct ApplesRequest;
+/// impl MyFetchRequest for ApplesRequest {
+///     type RequestBody = (); type ResponseBody = ();
+///     fn path(&self) -> String { "apples".to_string()}
+///     fn method(&self) -> MethodBody<Self::RequestBody> {MethodBody::Get}
+/// }
+///
+/// pub enum Msg {
+///     Variant
+/// }
+///
+/// let fetch_wrapper = Fetch::new(LocalWrapper(ApplesRequest));
+/// fetch_wrapper.fetch(|_| Msg::Variant); // Kicks off an async request.
+/// ```
 pub trait FetchRequest {
     /// The Request Body (if any).
     type RequestBody: Serialize;
@@ -124,13 +162,6 @@ pub trait FetchRequest {
     fn use_cors(&self) -> bool {
         false
     }
-
-//    fn deserializer<E>(&self, response_text: &str) ->  impl Deserializer<Error=E> {
-//        serde_json::Deserializer::from_str(response_text)
-//    }
-//    fn serializer(&self) -> Box<dyn Serializer> {
-//        unimplemented!()
-//    }
 }
 
 /// Fetch a resource, returning a result of the expected response,
