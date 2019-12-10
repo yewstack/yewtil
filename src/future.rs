@@ -26,7 +26,7 @@ impl <COMP: Component> ComponentLinkFuture for ComponentLink<COMP> {
         let mut link: ComponentLink<COMP>  = self.clone();
         let js_future = async move{
             let message: COMP::Message = future.await;
-            link.send_self(message);
+            link.send_message(message);
             Ok(JsValue::NULL)
         };
         future_to_promise(js_future);
@@ -37,7 +37,7 @@ impl <COMP: Component> ComponentLinkFuture for ComponentLink<COMP> {
         let mut link: ComponentLink<COMP> = self.clone();
         let js_future = async move {
             let messages: Vec<COMP::Message> = future.await;
-            link.send_self_batch(messages);
+            link.send_message_batch(messages);
             Ok(JsValue::NULL)
         };
         future_to_promise(js_future);
