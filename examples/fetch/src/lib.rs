@@ -82,7 +82,7 @@ impl Component for Model {
         }
     }
 
-    fn view(&self) -> Html<Self> {
+    fn view(&self) -> Html {
         match &self.markdown {
             FetchAction::NotFetching => {
                 html! {<button onclick=|_| Msg::GetMarkdown>{"Get employees"}</button>}
@@ -94,7 +94,7 @@ impl Component for Model {
     }
 }
 
-fn render_employee(e: &Employee) -> Html<Model> {
+fn render_employee(e: &Employee) -> Html {
     html! {
         <div>
             <div>

@@ -9,10 +9,10 @@
 //! * "mrc_irc" - Ergonomic Rc pointers.
 //! * "lrc" - Linked-list Rc pointer.
 //! * "history" - History tracker
-//! * "dsl" - Use functions instead of Yew's `html!` macro.
+// //! * "dsl" - Use functions instead of Yew's `html!` macro.
 
-#[cfg(feature = "dsl")]
-pub mod dsl;
+//#[cfg(feature = "dsl")]
+//pub mod dsl;
 
 #[cfg(feature = "neq")]
 mod not_equal_assign;
@@ -20,8 +20,8 @@ mod not_equal_assign;
 #[cfg(feature = "pure")]
 mod pure;
 
-#[cfg(feature = "with_callback")]
-mod with_callback;
+//#[cfg(feature = "with_callback")]
+//mod with_callback;
 
 #[cfg(any(feature = "mrc_irc", feature = "lrc"))]
 pub mod ptr;
@@ -36,15 +36,15 @@ pub use history::History;
 pub use not_equal_assign::NeqAssign;
 
 #[cfg(feature = "pure")]
-pub use pure::{Emissive, Pure, PureComponent, PureEmissiveComponent};
+pub use pure::{Pure, PureComponent};
 
 
 #[cfg(feature = "pure")]
 pub use yewtil_macro::Emissive;
 
 
-#[cfg(feature = "with_callback")]
-pub use with_callback::WithCallback;
+//#[cfg(feature = "with_callback")]
+//pub use with_callback::WithCallback;
 
 #[cfg(feature = "fetch")]
 pub mod fetch;
