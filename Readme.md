@@ -18,8 +18,7 @@ This should make it much easier to define simple components that don't hold stat
 This crate also has an experimental feature flag that enables the following features:
 * `Lrc` smart pointer - Rc-like pointer implemented on top of a linked list. Allows for novel state update mechanics 
 and traversal over linked shared pointers. <sup><sub>(This needs to be fuzz tested to make sure it doesn't leak.)</sub></sup>
-* `WithCallback` - A wrapper around props to make handing out sections of a large monolithic state object require less duplicate code. <sup><sub>(Can't be used with pure components due to orphan rules.)</sub></sup>
-* DSL for `Html<Self>` - A function-based domain-specific-language for Yew that can be used in a limited capacity instead of the `html!` macro. <sup><sub>(Unfinished. May not be able to represent some constructs possible in html!)</sub></sup>
+* DSL for `Html<Self>` - A function-based domain-specific-language for Yew that can be used in a limited capacity instead of the `html!` macro. <sup><sub>(Broken by recent changes in yew. Will be rewritten from scratch eventually.)</sub></sup>
 
 These experimental features are either not sufficiently vetted, may change significantly, or may be removed.
 
@@ -42,7 +41,7 @@ fn change(&mut self, props: Self::Properties) -> ShouldRender {
 ```rust
 pub type Button = Pure<PureButton>;
 
-#[derive(PartialEq, Properties, Emissive)]
+#[derive(PartialEq, Properties)]
 pub struct PureButton {
     #[props(required)]
     pub callback: Callback<Msg>,
@@ -50,9 +49,9 @@ pub struct PureButton {
 }
 
 impl PureComponent for PureButton {
-    fn render(&self) -> VNode<Pure<Self>> {
+    fn render(&self) -> VNode {
         html! {
-            <button onclick=|_| Msg::DoIt>{ &self.text }</button>
+            <button onclick=&self.callback>{ &self.text }</button>
         }
     }
 }
