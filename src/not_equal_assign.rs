@@ -39,7 +39,7 @@ pub trait NeqAssign<NEW> {
     ///         self.props.neq_assign(props)
     ///     }
     ///#
-    ///#     fn view(&self) -> VNode<Self> {
+    ///#     fn view(&self) -> VNode {
     ///#         unimplemented!()
     ///#     }
     ///  }
