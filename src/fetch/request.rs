@@ -1,10 +1,11 @@
-use crate::fetch::{FetchError, FetchAction};
+use crate::fetch::{FetchError};
 use wasm_bindgen::JsValue;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
 use web_sys::{Request, RequestInit, RequestMode, Response, Window};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
+use std::marker::PhantomData;
 
 /// An enum representing what method to use for the request,
 /// as well as a body if the method is able to have a body.
@@ -164,9 +165,7 @@ pub trait FetchRequest {
     }
 }
 
-/// Fetch a resource, returning a result of the expected response,
-/// or an error indicating what went wrong.
-pub async fn fetch_resource<T: FetchRequest>(request: &T) -> Result<T::ResponseBody, FetchError> {
+pub fn create_request<T: FetchRequest>(request: &T) -> Result<Request, FetchError> {
     let method = request.method();
     let headers = request.headers();
     let headers = JsValue::from_serde(&headers).expect("Convert Headers to Tuple");
@@ -183,13 +182,19 @@ pub async fn fetch_resource<T: FetchRequest>(request: &T) -> Result<T::ResponseB
     }
 
     // Create the request
-    let request = Request::new_with_str_and_init(
+    Request::new_with_str_and_init(
         &request.url(),
         &opts,
     )
-        .map_err(|e| FetchError::CouldNotCreateRequest(e))?; // TODO make this a Rust value instead.
+        .map_err(|e| FetchError::CouldNotCreateRequest(e)) // TODO make this a Rust value instead.
 
+}
 
+/// Fetch a resource, returning a result of the expected response,
+/// or an error indicating what went wrong.
+pub async fn fetch_resource<T: FetchRequest>(request: Result<Request, FetchError>, _req_type: PhantomData<T>) -> Result<T::ResponseBody, FetchError> {
+
+    let request = request?;
     // Send the request, resolving it to a response.
     let window: Window = web_sys::window().unwrap();
     let resp_value = JsFuture::from(window.fetch_with_request(&request))
@@ -218,29 +223,4 @@ pub async fn fetch_resource<T: FetchRequest>(request: &T) -> Result<T::ResponseB
         })?;
 
     Ok(deserialized)
-}
-
-/// Performs a fetch and then resolves the fetch to a message by way of using two provided Fns to
-/// convert the success and failure cases.
-///
-/// This is useful if you want to handle the success case and failure case separately.
-pub async fn fetch_to_msg<T: FetchRequest, Msg>(request: &T, success: impl Fn(T::ResponseBody) -> Msg, failure: impl Fn(FetchError) -> Msg) -> Msg {
-    fetch_resource(request)
-        .await
-        .map(success)
-        .unwrap_or_else(failure)
-}
-
-// TODO move this into the namespace of FetchAction.
-/// Performs a fetch and resolves the fetch to a message by converting a FetchState into the Message
-/// by way of a provided closure.
-///
-/// This is useful if you just want to update a FetchState in your model based on the result of your request.
-pub async fn fetch_to_state_msg<T: FetchRequest, Msg>(request: &T, to_msg: impl Fn(FetchAction<T::ResponseBody>) -> Msg) -> Msg {
-    let fetch_state = match fetch_resource(request).await {
-        Ok(response) => FetchAction::Success(response),
-        Err(err) => FetchAction::Failed(err)
-    };
-
-    to_msg(fetch_state)
 }
