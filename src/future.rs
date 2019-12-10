@@ -41,3 +41,28 @@ impl <COMP: Component> ComponentLinkFuture for ComponentLink<COMP> {
         spawn_local(js_future);
     }
 }
+
+/// Trait that allows you to use `AgentLink`s to register futures.
+pub trait AgentLinkFuture {
+    type Message;
+    /// This method processes a Future that returns a message and sends it back to the component's
+    /// loop.
+    ///
+    /// # Panics
+    /// If the future panics, then the promise will not resolve, and will leak.
+    fn send_future<F>(&self, future: F) where F: Future<Output = Self::Message> + 'static;
+}
+
+impl <AGN: Agent> AgentLinkFuture for AgentLink<AGN> {
+    type Message = AGN::Message;
+
+    fn send_future<F>(&self, future: F) where F: Future<Output=Self::Message> + 'static {
+        let link: AgentLink<AGN>  = self.clone();
+        let js_future = async move{
+            let message: AGN::Message = future.await;
+            let cb = link.callback(|m: AGN::Message| m);
+            cb.emit(message);
+        };
+        spawn_local(js_future);
+    }
+}
