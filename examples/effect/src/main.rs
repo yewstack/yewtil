@@ -20,7 +20,7 @@ impl Component for Model {
         msg.call(self)
     }
 
-    fn view(&self) -> Html<Self> {
+    fn view(&self) -> Html {
         html! {
             <>
                 <div>

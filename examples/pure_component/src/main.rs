@@ -3,7 +3,7 @@ use yew::{html, Component, ComponentLink, Html, ShouldRender};
 mod button;
 use crate::button::Button;
 
-pub struct Model {}
+pub struct Model {link: ComponentLink<Self>}
 
 pub enum Msg {
     DoIt,
@@ -13,8 +13,8 @@ impl Component for Model {
     type Message = Msg;
     type Properties = ();
 
-    fn create(_: Self::Properties, _: ComponentLink<Self>) -> Self {
-        Model {}
+    fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
+        Model {link}
     }
 
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
@@ -26,9 +26,9 @@ impl Component for Model {
         }
     }
 
-    fn view(&self) -> Html<Self> {
+    fn view(&self) -> Html {
         html! {
-            <Button callback=Msg::from text = "Click me!" />
+            <Button callback=self.link.callback(|_| Msg::DoIt) text = "Click me!" />
         }
     }
 }

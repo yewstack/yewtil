@@ -25,7 +25,7 @@ impl Component for Model {
         }
     }
 
-    fn view(&self) -> Html<Self> {
+    fn view(&self) -> Html {
         BoxedVNodeProducer::from(
             list()
                 .child(text("Hello there"))
