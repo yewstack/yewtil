@@ -54,5 +54,5 @@ mod effect;
 #[cfg(feature = "effect")]
 pub use effect::{Effect, effect};
 
-#[cfg(all(target_arch = "wasm32", not(target_os="wasi"), not(cargo_web), feature = "future"))]
+#[cfg(feature = "future")]
 pub mod future;

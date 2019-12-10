@@ -1,7 +1,7 @@
 use std::future::Future;
-use yew::{ComponentLink, Component};
-use wasm_bindgen::JsValue;
-use wasm_bindgen_futures::future_to_promise;
+use yew::{ComponentLink, Component, agent::{AgentLink, Agent}};
+use stdweb::spawn_local;
+
 
 /// Trait that allows you to use `ComponentLink`s to register futures.
 pub trait ComponentLinkFuture {
@@ -27,9 +27,8 @@ impl <COMP: Component> ComponentLinkFuture for ComponentLink<COMP> {
         let js_future = async move{
             let message: COMP::Message = future.await;
             link.send_message(message);
-            Ok(JsValue::NULL)
         };
-        future_to_promise(js_future);
+        spawn_local(js_future);
 
     }
 
@@ -38,8 +37,7 @@ impl <COMP: Component> ComponentLinkFuture for ComponentLink<COMP> {
         let js_future = async move {
             let messages: Vec<COMP::Message> = future.await;
             link.send_message_batch(messages);
-            Ok(JsValue::NULL)
         };
-        future_to_promise(js_future);
+        spawn_local(js_future);
     }
 }
