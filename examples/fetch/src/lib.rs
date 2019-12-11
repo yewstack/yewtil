@@ -1,9 +1,9 @@
 use crate::Msg::SetMarkdownFetchState;
 use yew::{html, Component, ComponentLink, Html, ShouldRender};
-use yewtil::fetch::{FetchAction, FetchRequest, MethodBody};
-use yewtil::fetch::fetch_to_state_msg;
+use yewtil::fetch::{FetchAction, FetchRequest, MethodBody, Json, Fetch, FetchState};
 use serde::{Serialize, Deserialize};
 use wasm_bindgen::prelude::*;
+use yewtil::future::ComponentLinkFuture;
 
 #[wasm_bindgen]
 pub fn run_app() {
@@ -11,12 +11,13 @@ pub fn run_app() {
 }
 
 struct Model {
-    markdown: FetchAction<Vec<Employee>>,
+    markdown: Fetch<Request, Vec<Employee>>,
     link: ComponentLink<Self>,
 }
 
+#[derive(Default, Debug, Clone)]
 pub struct Request;
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Employee {
     id: String,
     employee_name: String,
@@ -28,6 +29,7 @@ pub struct Employee {
 impl FetchRequest for Request {
     type RequestBody = ();
     type ResponseBody = Vec<Employee>;
+    type Format = Json;
 
     fn url(&self) -> String {
         // Given that this is an external resource, this may fail sometime in the future.
@@ -62,7 +64,7 @@ impl Component for Model {
 
     fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
         Model {
-            markdown: FetchAction::NotFetching,
+            markdown: Default::default(),
             link,
         }
     }
@@ -70,26 +72,25 @@ impl Component for Model {
     fn update(&mut self, msg: Self::Message) -> ShouldRender {
         match msg {
             Msg::SetMarkdownFetchState(fetch_state) => {
-                self.markdown = fetch_state;
+                self.markdown.apply(fetch_state);
                 true
             }
             Msg::GetMarkdown => {
-                let request = Request;
-                self.link.send_future(fetch_to_state_msg(request, Msg::SetMarkdownFetchState));
-                self.link.send_self(SetMarkdownFetchState(FetchAction::Fetching));
+                self.link.send_future(self.markdown.fetch(Msg::SetMarkdownFetchState));
+                self.link.send_message(SetMarkdownFetchState(FetchAction::Fetching));
                 false
             }
         }
     }
 
     fn view(&self) -> Html {
-        match &self.markdown {
-            FetchAction::NotFetching => {
-                html! {<button onclick=|_| Msg::GetMarkdown>{"Get employees"}</button>}
+        match self.markdown.as_ref().state() {
+            FetchState::NotFetching(_) => {
+                html! {<button onclick=self.link.callback(|_| Msg::GetMarkdown)>{"Get employees"}</button>}
             }
-            FetchAction::Fetching => html! {"Fetching"},
-            FetchAction::Success(data) => data.iter().map(render_employee).collect(),
-            FetchAction::Failed(err) => html! {&err},
+            FetchState::Fetching(_) => html! {"Fetching"},
+            FetchState::Fetched(data) => data.iter().map(render_employee).collect(),
+            FetchState::Failed(_, err) => html! {&err},
         }
     }
 }

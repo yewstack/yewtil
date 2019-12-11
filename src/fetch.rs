@@ -18,6 +18,8 @@ pub use self::action::*;
 pub use self::error::*;
 pub use self::state::*;
 pub use self::request::*;
+use wasm_bindgen::__rt::core::marker::PhantomData;
+use std::future::Future;
 
 /// Indicates that a change was caused by a set function.
 pub type DidChange = bool;
@@ -135,18 +137,22 @@ impl <REQ, RES> Fetch<REQ, RES> {
     // TODO need tests to make sure that this is ergonomic.
     /// Makes an asynchronous fetch request, which will produce a message that makes use of a
     /// `FetchAction` when it completes.
-    pub async fn fetch_convert<T: FetchRequest, Msg>(
+    pub fn fetch_convert<T: FetchRequest, Msg>(
         &self,
         to_request: impl Fn(&Self) -> &T,
         to_msg: impl Fn(FetchAction<T::ResponseBody>) -> Msg
-    ) -> Msg {
-        let request = to_request(self);
-        let fetch_state = match fetch_resource(request).await {
-            Ok(response) => FetchAction::Success(response),
-            Err(err) => FetchAction::Failed(err)
-        };
+    ) -> impl Future<Output=Msg> {
+        let request: &T = to_request(self);
+        let request = create_request(request);
+        let req_type: PhantomData<T> = PhantomData;
+        async move {
+            let fetch_state = match fetch_resource(request, req_type).await {
+                Ok(response) => FetchAction::Success(response),
+                Err(err) => FetchAction::Failed(err)
+            };
 
-        to_msg(fetch_state)
+            to_msg(fetch_state)
+        }
     }
 
     /// Transforms the type of the response held by the fetch state (if any exists).
@@ -176,6 +182,10 @@ impl <REQ, RES> Fetch<REQ, RES> {
     /// Gets the request body.
     pub fn req(self) -> REQ {
         self.request
+    }
+
+    pub fn state(self) -> FetchState<RES> {
+        self.response
     }
 
     /// Converts the wrapped values to references.
@@ -218,17 +228,21 @@ impl <REQ: FetchRequest> Fetch<REQ, REQ::ResponseBody>{
 
     /// Makes an asynchronous fetch request, which will produce a message that makes use of a
     /// `FetchAction` when it completes.
-    pub async fn fetch<Msg>(
+    pub fn fetch<Msg>(
         &self,
         to_msg: impl Fn(FetchAction<REQ::ResponseBody>) -> Msg
-    )-> Msg {
+    )-> impl Future<Output=Msg> {
         let request = self.as_ref().req();
-        let fetch_state = match fetch_resource(request).await {
-            Ok(response) => FetchAction::Success(response),
-            Err(err) => FetchAction::Failed(err)
-        };
+        let request = create_request(request);
+        let req_type: PhantomData<REQ> = PhantomData;
+        async move {
+            let fetch_state = match fetch_resource(request, req_type).await {
+                Ok(response) => FetchAction::Success(response),
+                Err(err) => FetchAction::Failed(err)
+            };
 
-        to_msg(fetch_state)
+            to_msg(fetch_state)
+        }
     }
 }
 
