@@ -3,8 +3,8 @@ use yew::{ComponentLink, Component, agent::{AgentLink, Agent}};
 use stdweb::spawn_local;
 
 
-/// Trait that allows you to use `ComponentLink`s to register futures.
-pub trait ComponentLinkFuture {
+/// Trait that allows you to use `ComponentLink` and `AgentLink` to register futures.
+pub trait LinkFuture {
     type Message;
     /// This method processes a Future that returns a message and sends it back to the component's
     /// loop.
@@ -19,7 +19,7 @@ pub trait ComponentLinkFuture {
     fn send_future_batch<F>(&self, future: F) where F: Future<Output=Vec<Self::Message>> + 'static;
 }
 
-impl <COMP: Component> ComponentLinkFuture for ComponentLink<COMP> {
+impl <COMP: Component> LinkFuture for ComponentLink<COMP> {
     type Message = COMP::Message;
 
     fn send_future<F>(&self, future: F) where F: Future<Output=Self::Message> + 'static {
@@ -42,18 +42,7 @@ impl <COMP: Component> ComponentLinkFuture for ComponentLink<COMP> {
     }
 }
 
-/// Trait that allows you to use `AgentLink`s to register futures.
-pub trait AgentLinkFuture {
-    type Message;
-    /// This method processes a Future that returns a message and sends it back to the component's
-    /// loop.
-    ///
-    /// # Panics
-    /// If the future panics, then the promise will not resolve, and will leak.
-    fn send_future<F>(&self, future: F) where F: Future<Output = Self::Message> + 'static;
-}
-
-impl <AGN: Agent> AgentLinkFuture for AgentLink<AGN> {
+impl <AGN: Agent> LinkFuture for AgentLink<AGN> {
     type Message = AGN::Message;
 
     fn send_future<F>(&self, future: F) where F: Future<Output=Self::Message> + 'static {
@@ -64,5 +53,9 @@ impl <AGN: Agent> AgentLinkFuture for AgentLink<AGN> {
             cb.emit(message);
         };
         spawn_local(js_future);
+    }
+
+    fn send_future_batch<F>(&self, _future: F) where F: Future<Output=Vec<Self::Message>> + 'static {
+        unimplemented!("Agents don't support batching their messages.")
     }
 }
