@@ -50,7 +50,7 @@ wasm-bindgen = {version = "0.2.51", features=["serde-serialize"], optional = tru
 futures = {version = "0.3.1", optional = true}
 serde = {version= "1.0.102", optional = true}
 serde_json = { version = "1.0.41", optional = true }
-stdweb = { version = "0.4.20", features = ["futures-support"], optional = true }
+stdweb = { version = "0.4.20", features = ["futures-support", "experimental_features_which_may_break_on_minor_version_bumps"], optional = true }
 
 [dependencies.web-sys]
 version = "0.3.31"
