@@ -42,6 +42,9 @@ pub use pure::{Pure, PureComponent};
 #[cfg(feature = "pure")]
 pub use yewtil_macro::Emissive;
 
+#[cfg(feature = "pure")]
+pub use yewtil_macro::function_component;
+
 
 //#[cfg(feature = "with_callback")]
 //pub use with_callback::WithCallback;
@@ -56,3 +59,4 @@ pub use effect::{Effect, effect};
 
 #[cfg(feature = "future")]
 pub mod future;
+

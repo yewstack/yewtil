@@ -11,6 +11,13 @@ use syn::{parse_macro_input, DeriveInput, Error, Field, Type};
 mod util;
 use util::extract_type_from_callback;
 use std::fmt;
+use crate::function_component::function_component_handler;
+
+mod function_component;
+#[proc_macro_attribute]
+pub fn function_component(attr: TokenStream, item: TokenStream) -> TokenStream {
+    function_component_handler(attr.into(), item.into()).into()
+}
 
 #[proc_macro_derive(Emissive, attributes(props))]
 pub fn emissive(tokens: TokenStream) -> TokenStream {
