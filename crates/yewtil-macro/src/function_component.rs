@@ -1,6 +1,6 @@
 use proc_macro2::{TokenStream, Ident, Span};
 use proc_macro::TokenStream as TokenStream1;
-use syn::{Visibility, Error, Field, Stmt, Block, VisPublic};
+use syn::{Visibility, Error, Field, Stmt, Block, VisPublic, Type};
 use syn::Token;
 use syn::token;
 use syn::punctuated::Punctuated;
@@ -89,48 +89,73 @@ impl ToTokens for FunctionComponentInfo {
         let FunctionComponentInfo {
             component_name, function
         } = self;
-        let function_impl = quote!{#function};
+        // The function tokens must be re-generated in order to strip the attributes that are not allowed.
+        let function_token_stream = function.to_token_stream();
         let Function {
             name, fields, ..
         } = function;
 
-        let impl_name = format!("Pure{}", component_name.to_string());
+        let impl_name = format!("FuncComp{}", component_name.to_string());
         let impl_name = Ident::new(&impl_name, Span::call_site());
 
         let alias = quote! {
-            pub type #component_name = Pure<#impl_name>;
+            pub type #component_name = ::yewtil::Pure<#impl_name>;
         };
 
-        // Set the fields to be public
-        let public_fields = fields.iter()
+        // Set the fields to be public and strips references as necessary.
+        // This will preserve attributes like #[props(required)], which will appear in the generated struct below.
+        let new_fields = fields.iter()
             .map(|field: &Field| {
                 let mut new_field: Field = field.clone();
                 let visibility = Visibility::Public(VisPublic{ pub_token: syn::token::Pub {span: Span::call_site()} });
+                // Strip references so the component can have a static lifetime.
+                // TODO Handle 'static lifetimes gracefully here - allowing &'static strings instead of erroneously converting them to plain strs.
+                let ty = match &field.ty {
+                    Type::Reference(x) => {
+                        let elem = x.elem.clone();
+                        Type::Verbatim(quote!{
+                            #elem
+                        })
+                    }
+                    x => x.clone()
+                };
                 new_field.vis = visibility;
+                new_field.ty = ty;
                 new_field
             })
             .collect::<Punctuated<_, Token![,]>>();
 
 
         let component_struct = quote!{
-            #[derive(Clone, PartialEq, Properties)]
+            #[derive(::std::clone::Clone, ::std::cmp::PartialEq, ::yew::Properties)]
             pub struct #impl_name {
-                #public_fields
+                #new_fields
             }
         };
 
-        let arguments = fields.iter()
-            .map(|field| {
-                let field = field.ident.as_ref().expect("Field must have name");
-                quote! {
-                    self.#field.clone() // TODO this clone here is expensive, instead have the function take &refs and strip them when making the component struct impl.
+        let arguments = fields.iter().zip(new_fields.iter())
+            .map(|(field, new_field): (&Field, &Field)| {
+                let field_name = field.ident.as_ref().expect("Field must have name");
+
+                // If the fields differ, then a reference was removed from the function's field's type
+                // to make it static.
+                // Otherwise it is assumed that the type is not a reference on the function and it
+                // implements clone, and that when calling the function, the type should be cloned again.
+                if field.ty != new_field.ty {
+                    quote! {
+                        &self.#field_name
+                    }
+                } else {
+                    quote! {
+                        self.#field_name.clone()
+                    }
                 }
             })
             .collect::<Punctuated<_, Token![,]>>();
 
         let pure_component_impl = quote! {
-            impl PureComponent for #impl_name {
-                fn render(&self) -> VNode {
+            impl ::yewtil::PureComponent for #impl_name {
+                fn render(&self) -> ::yew::Html {
                      #name(#arguments)
                 }
             }
@@ -138,7 +163,7 @@ impl ToTokens for FunctionComponentInfo {
 
 
         tokens.extend(quote!{
-            #function_impl
+            #function_token_stream
             #alias
             #component_struct
             #pure_component_impl
