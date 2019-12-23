@@ -92,14 +92,14 @@ impl ToTokens for FunctionComponentInfo {
         // The function tokens must be re-generated in order to strip the attributes that are not allowed.
         let function_token_stream = function.to_token_stream();
         let Function {
-            name, fields, ..
+            vis, name, fields, ..
         } = function;
 
         let impl_name = format!("FuncComp{}", component_name.to_string());
         let impl_name = Ident::new(&impl_name, Span::call_site());
 
         let alias = quote! {
-            pub type #component_name = ::yewtil::Pure<#impl_name>;
+            #vis type #component_name = ::yewtil::Pure<#impl_name>;
         };
 
         // Set the fields to be public and strips references as necessary.
@@ -128,7 +128,7 @@ impl ToTokens for FunctionComponentInfo {
 
         let component_struct = quote!{
             #[derive(::std::clone::Clone, ::std::cmp::PartialEq, ::yew::Properties)]
-            pub struct #impl_name {
+            #vis struct #impl_name {
                 #new_fields
             }
         };
