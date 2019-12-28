@@ -8,8 +8,9 @@ As a consequence of this, the Yew crate is free to make changes that may cause b
 ## Features
 Currently, this crate supports these features in a stable capacity:
 * `NeqAssign` - makes assigning props and returning a relevant ShouldRender value easier.
-* Pure Components - implement pure components using two traits: `PureComponent` and `Emissive`, the latter of which can be derived in most cases. 
+* Pure Components - implement pure components using the `PureComponent` trait and the `Pure` Component adaptor. 
 This should make it much easier to define simple components that don't hold state.
+  * Function components - a macro that takes a function that returns `Html` and converts it to a pure component.
 * `Mrc`/`Irc` smart pointers - Rc-like pointers that are more ergonomic to use within Yew.
 * `History` - A wrapper that holds the history of values that have been assigned to it.
 * `Effect` - A way to update component state by defining what to change inside of `html!` callbacks
