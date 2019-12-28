@@ -3,7 +3,7 @@
 //! All features:
 //!
 //! * "neq" - NeqAssign trait
-//! * "pure" - Pure components
+//! * "pure" - Pure components and function components.
 //! * "future" - Async support for Yew Messages
 //! * "fetch" - Wrapper that holds requests and responses.
 //! * "mrc_irc" - Ergonomic Rc pointers.
@@ -19,9 +19,6 @@ mod not_equal_assign;
 
 #[cfg(feature = "pure")]
 mod pure;
-
-//#[cfg(feature = "with_callback")]
-//mod with_callback;
 
 #[cfg(any(feature = "mrc_irc", feature = "lrc"))]
 pub mod ptr;
@@ -40,14 +37,7 @@ pub use pure::{Pure, PureComponent};
 
 
 #[cfg(feature = "pure")]
-pub use yewtil_macro::Emissive;
-
-#[cfg(feature = "pure")]
 pub use yewtil_macro::function_component;
-
-
-//#[cfg(feature = "with_callback")]
-//pub use with_callback::WithCallback;
 
 #[cfg(feature = "fetch")]
 pub mod fetch;
