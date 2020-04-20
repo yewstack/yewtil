@@ -39,8 +39,7 @@ lrc = []
 mrc_irc = []
 
 [dependencies]
-yew = { git = "https://github.com/yewstack/yew", branch="master" }
-#yew = "0.10.0"
+yew = "0.14"
 yewtil-macro = {path = "crates/yewtil-macro", version="0.1.0", optional=true}
 log = "0.4.8"
 
