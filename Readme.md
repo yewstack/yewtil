@@ -1,3 +1,8 @@
+# This project has been moved 
+This project has been incorporated into the [Yew](https://github.com/yewstack/yew) repository, and can specifically be found [here](https://github.com/yewstack/yew/tree/master/yewtil).
+You should address all questions or improvements there instead of here.
+This repository will be archived in the near future.
+
 # Yewtil
 Utility crate for the [Yew](https://github.com/yewstack/yew) frontend web framework.
 
